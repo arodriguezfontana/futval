@@ -25,6 +25,7 @@ import { BusinessMetrics, classifySyncRun } from '../../shared/observability/met
 import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
 import { safelyAsync } from '../../shared/observability/metrics/safely';
 import { SyncLastSuccessService } from '../sync/sync-last-success.service';
+import { RedisCacheService } from '../../shared/cache/redis-cache.service';
 
 const MAX_RETAINED_RUNS = 20;
 const FATAL_ERROR_MESSAGE = 'La sincronización se interrumpió por un error inesperado.';
@@ -50,6 +51,7 @@ export class PlayerSyncService {
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
     @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
     @Optional() private readonly lastSuccess?: SyncLastSuccessService,
+    @Optional() private readonly cache?: RedisCacheService,
   ) {}
 
   /**
@@ -119,6 +121,10 @@ export class PlayerSyncService {
     let aborted = false;
     try {
       await this.executeSync(summary);
+      if (this.cache) {
+        await this.cache.delByPrefix('futval:catalog:');
+        await this.cache.delByPrefix('futval:player:');
+      }
       this.runs.set(runId, {
         runId,
         status: 'completed',

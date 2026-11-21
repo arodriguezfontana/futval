@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Player } from '../../domain/player/player';
 import { PlayerFilters } from '../../domain/player/player-filters';
 import { PlayerPagination } from '../../domain/player/player-page';
 import { TeamRepository } from '../../repositories/competition/team.repository';
+import { RedisCacheService } from '../../shared/cache/redis-cache.service';
+import { buildCacheKey, buildUserRankingCacheKey } from '../../domain/cache/build-cache-key';
 import { PlayerService } from './player.service';
 
 export interface PlayerWithCrest {
@@ -36,19 +39,35 @@ export class PlayerEnrichmentService {
   constructor(
     private readonly playerService: PlayerService,
     private readonly teams: TeamRepository,
+    @Optional() private readonly cache?: RedisCacheService,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   async listPlayersWithCrests(
     filters: PlayerFilters,
     pagination: PlayerPagination,
   ): Promise<PlayerPageWithCrests> {
+    const cacheKey = buildCacheKey('catalog', { ...filters, ...pagination });
+    if (this.cache) {
+      const cached = await this.readCache<PlayerPageWithCrests>(cacheKey);
+      if (cached) {
+        return { ...cached, items: cached.items.map((item) => ({ ...item, player: this.rehydratePlayer(item.player) })) };
+      }
+    }
+
     const page = await this.playerService.listPlayers(filters, pagination);
     const crests = await this.loadCrests(page.items);
     const items = page.items.map((player) => ({
       player,
       crestUrl: crests.get(player.team) ?? null,
     }));
-    return { items, total: page.total };
+    const result: PlayerPageWithCrests = { items, total: page.total };
+
+    if (this.cache) {
+      const ttl = Number(this.configService?.get<number>('REDIS_TTL_CATALOG', 3600)) || 3600;
+      await this.cache.set(cacheKey, result, ttl);
+    }
+    return result;
   }
 
   async getRankingWithCrests(
@@ -56,6 +75,21 @@ export class PlayerEnrichmentService {
     filters: PlayerFilters,
     pagination: PlayerPagination,
   ): Promise<PlayerRankingPageWithCrests> {
+    const cacheKey = buildUserRankingCacheKey(userId, { ...filters, ...pagination });
+    if (this.cache) {
+      const cached = await this.readCache<PlayerRankingPageWithCrests>(cacheKey);
+      if (cached) {
+        return {
+          ...cached,
+          items: cached.items.map((item) => ({
+            ...item,
+            player: this.rehydratePlayer(item.player),
+            calculatedAt: new Date(item.calculatedAt),
+          })),
+        };
+      }
+    }
+
     const page = await this.playerService.findRanking(userId, filters, pagination);
     const crests = await this.loadCrests(page.items.map((item) => item.player));
     const items = page.items.map((item, index) => ({
@@ -67,13 +101,52 @@ export class PlayerEnrichmentService {
       strategyName: item.strategyName,
       calculatedAt: item.calculatedAt,
     }));
-    return { items, total: page.total };
+    const result: PlayerRankingPageWithCrests = { items, total: page.total };
+
+    if (this.cache) {
+      const ttl = Number(this.configService?.get<number>('REDIS_TTL_RANKING', 86400)) || 86400;
+      await this.cache.set(cacheKey, result, ttl);
+    }
+    return result;
   }
 
   async getPlayerByIdWithCrest(id: string): Promise<PlayerWithCrest> {
+    const cacheKey = `futval:player:${id}`;
+    if (this.cache) {
+      const cached = await this.readCache<PlayerWithCrest>(cacheKey);
+      if (cached) {
+        return { ...cached, player: this.rehydratePlayer(cached.player) };
+      }
+    }
+
     const player = await this.playerService.getPlayerById(id);
     const crests = await this.loadCrests([player]);
-    return { player, crestUrl: crests.get(player.team) ?? null };
+    const result: PlayerWithCrest = { player, crestUrl: crests.get(player.team) ?? null };
+
+    if (this.cache) {
+      const ttl = Number(this.configService?.get<number>('REDIS_TTL_CATALOG', 3600)) || 3600;
+      await this.cache.set(cacheKey, result, ttl);
+    }
+    return result;
+  }
+
+  /** Lectura del cache fail-open: si Redis o su servicio fallan, se resuelve como si no hubiera cache (acierto perdido, no error). */
+  private async readCache<T>(key: string): Promise<T | null> {
+    try {
+      return (await this.cache?.get<T>(key)) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Lo que vuelve de Redis es JSON plano: un `Player` serializado conserva sus campos privados (`_name`, `_team`, ...) pero
+   * pierde los getters, así que sin reconstruirlo `player.name` sería `undefined` en cada acierto de cache. Se vuelve a
+   * armar con `Player.restore` quitando el guion bajo de cada campo.
+   */
+  private rehydratePlayer(raw: Player): Player {
+    const props = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key.replace(/^_/, ''), value]));
+    return Player.restore(props as Parameters<typeof Player.restore>[0]);
   }
 
   /** Una sola consulta a `teams` por los equipos distintos de los jugadores: nombre WhoScored → escudo. */
