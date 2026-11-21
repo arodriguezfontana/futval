@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Clock } from '../../adapters/runtime/clock';
 import { IdGenerator } from '../../adapters/runtime/id-generator';
 import { CLOCK, ID_GENERATOR } from '../../modules/runtime/runtime.constants';
@@ -24,9 +24,12 @@ import { UserRole } from '../../domain/auth/user-role';
 import { TokenHolding } from '../../domain/portfolio/token-holding';
 import { QuoteRecalculatedEvent, QUOTE_RECALCULATED_EVENT } from '../../domain/alerts/events/quote-recalculated.event';
 import { QuotationService } from '../quotation/quotation.service';
+import { BusinessMetrics } from '../../shared/observability/metrics/business-metrics';
+import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
+import { safely } from '../../shared/observability/metrics/safely';
 import { StrategyProvisioningService } from '../quotation/strategy-provisioning.service';
 import { roundToTwoDecimals } from '../../shared/numbers/round2';
-import { SimulationResultDto, SimulatedQuoteDto } from '../../controllers/simulation/dto/simulation-result.dto';
+import { SimulatedQuote, SimulationResult } from './simulation-result';
 import {
   buildDateHelper,
   DEFAULT_BOTS,
@@ -56,9 +59,10 @@ export class MarketSimulationService {
     private readonly eventEmitter: EventEmitter2,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
+    @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
   ) {}
 
-  async simulate(targetEmail?: string): Promise<SimulationResultDto> {
+  async simulate(targetEmail?: string): Promise<SimulationResult> {
     const adminEmailStr = targetEmail ?? this.config.get<string>('ADMIN_EMAIL') ?? 'admin@desapp.com';
     this.logger.log(`Iniciando simulación de mercado para ${adminEmailStr}...`);
 
@@ -91,7 +95,7 @@ export class MarketSimulationService {
     const { transactionsCount, holdingsCount, adminOrdersCount, marketOrdersCount } =
       await this.seedMarketActivityIfNeeded(admin, bots, simPlayers, refPrices, tDate);
 
-    const { quotesCount, quotesSummary } = await this.seedQuotes(admin.id, activePlayers, refPrices, tDate);
+    const { quotesCount, quotesSummary } = await this.seedQuotesMeasured(admin.id, activePlayers, refPrices, tDate);
 
     this.logger.log(
       `Simulación completada con éxito: ${holdingsCount} holdings, ${transactionsCount} transacciones, ${adminOrdersCount} órdenes admin, ${marketOrdersCount} órdenes de mercado, ${quotesCount} cotizaciones.`,
@@ -200,12 +204,39 @@ export class MarketSimulationService {
     return orders.length;
   }
 
+  /**
+   * Spec 031: la simulación de mercado cuenta como un recálculo `manual`. Esta función es el ÚNICO dueño de esa
+   * medición: la simulación siembra las cotizaciones y emite el evento por su cuenta y NO pasa por
+   * `QuotationService.recalculateAll` (que mide sus propias corridas). Si algún día pasara por ahí, tendría
+   * que dejar de medir acá para no contar dos veces (lo vigilan un unit y un e2e).
+   */
+  private async seedQuotesMeasured(
+    adminId: string,
+    activePlayers: Player[],
+    refPrices: Map<string, number>,
+    tDate: (daysAgo: number) => Date,
+  ): Promise<{ quotesCount: number; quotesSummary: SimulatedQuote[] }> {
+    const startedAtMs = this.clock.now().getTime();
+    let outcome: 'success' | 'failure' = 'failure';
+    try {
+      const result = await this.seedQuotes(adminId, activePlayers, refPrices, tDate);
+      outcome = 'success';
+      safely(() => this.metrics?.setQuoteLastRecalculation(this.clock.now()));
+      return result;
+    } finally {
+      safely(() => {
+        const durationSeconds = Math.max(0, (this.clock.now().getTime() - startedAtMs) / 1000);
+        this.metrics?.recordQuoteRecalculation('manual', outcome, durationSeconds);
+      });
+    }
+  }
+
   private async seedQuotes(
     adminId: string,
     activePlayers: Player[],
     refPrices: Map<string, number>,
     tDate: (daysAgo: number) => Date,
-  ): Promise<{ quotesCount: number; quotesSummary: SimulatedQuoteDto[] }> {
+  ): Promise<{ quotesCount: number; quotesSummary: SimulatedQuote[] }> {
     await this.playerQuotes.deleteAllByUserId(adminId);
 
     const adminStrategies = await this.strategies.findByUserId(adminId);

@@ -1,10 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { IdGenerator } from '../../adapters/runtime/id-generator';
 import { ID_GENERATOR } from '../../modules/runtime/runtime.constants';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Notification } from '../../domain/notifications/notification';
 import { ALERT_TRIGGERED_EVENT, AlertTriggeredEvent } from '../../domain/alerts/events/alert-triggered.event';
 import { NotificationsService } from './notifications.service';
+import { BusinessMetrics } from '../../shared/observability/metrics/business-metrics';
+import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
+import { safely } from '../../shared/observability/metrics/safely';
 
 /**
  * Escucha alert.triggered, persiste la Notification correspondiente y la
@@ -16,6 +19,7 @@ export class AlertNotificationListener {
   constructor(
     private readonly notifications: NotificationsService,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
+    @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
   ) {}
 
   @OnEvent(ALERT_TRIGGERED_EVENT)
@@ -31,6 +35,8 @@ export class AlertNotificationListener {
     });
 
     const persisted = await this.notifications.persist(notification);
-    await this.notifications.pushToStream(persisted);
+    const live = await this.notifications.pushToStream(persisted);
+    // Spec 031: se cuenta DESPUÉS de persistir; `live` si el usuario tenía una conexión abierta al empujar.
+    safely(() => this.metrics?.recordNotificationCreated(live ? 'live' : 'stored_only'));
   }
 }

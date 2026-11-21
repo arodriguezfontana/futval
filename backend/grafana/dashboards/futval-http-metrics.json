@@ -7,10 +7,10 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 9,
+  "version": 30,
   "refresh": "15s",
   "time": {
-    "from": "now-30m",
+    "from": "now-2h",
     "to": "now"
   },
   "templating": {
@@ -27,6 +27,1365 @@
   },
   "panels": [
     {
+      "id": 15,
+      "type": "row",
+      "title": "Negocio — Resumen del período",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Operaciones",
+      "description": "Operaciones de escritura de negocio en el período del dashboard (compras, ventas, órdenes, alertas, sincronizaciones, recálculos, estrategias). No incluye login, registro ni API keys.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(business_operations_total{operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range]))",
+          "legendFormat": "operaciones",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "% de rechazos",
+      "description": "Operaciones de negocio rechazadas por una regla de negocio o fallidas de forma inesperada, sobre el total del período. Verde por debajo del 10 %, amarillo hasta el 30 % y rojo después. Sin login, registro ni API keys.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "sin datos",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 0.1,
+                "color": "yellow"
+              },
+              {
+                "value": 0.3,
+                "color": "red"
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(business_operations_total{outcome!=\"success\",operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range])) / sum(increase(business_operations_total{operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range]))",
+          "legendFormat": "rechazos",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Tokens",
+      "description": "Tokens operados en el período por compras y ventas registradas (market_tokens_traded_total, compra y venta juntas).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_tokens_traded_total[$__range]))",
+          "legendFormat": "tokens",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "Créditos",
+      "description": "Volumen operado en créditos en el período (market_volume_credits_total): la suma de cantidad × precio de cada cruce, compra y venta juntas.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_volume_credits_total[$__range]))",
+          "legendFormat": "créditos",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "Precio / token",
+      "description": "Precio promedio por token operado en el período: volumen en créditos ÷ tokens operados. Si sube o baja sin que cambie la cantidad, el mercado se está moviendo.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "noValue": "sin datos",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_volume_credits_total[$__range])) / sum(increase(market_tokens_traded_total[$__range]))",
+          "legendFormat": "precio",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Conexiones SSE",
+      "description": "Conexiones abiertas del stream de notificaciones en tiempo real en este momento (sse_connections_active).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(sse_connections_active)",
+          "legendFormat": "conexiones",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Negocio — Mercado",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Operaciones por resultado",
+      "description": "Operaciones de negocio por minuto a lo largo del tiempo, por resultado: success = aceptada, rejected = rechazada por una regla de negocio, unexpected = fallida de forma inesperada. Sólo aparecen los resultados que ocurrieron en el rango. Los totales del período están en las tarjetas y en la tabla de al lado. Sin login, registro ni API keys.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rejected"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "unexpected"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (outcome) (increase(business_operations_total{operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__rate_interval])) and on(outcome) (sum by (outcome) (increase(business_operations_total{operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range])) > 0)",
+          "legendFormat": "{{outcome}}",
+          "interval": "1m"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "Operaciones por tipo y resultado",
+      "description": "Cuántas veces ocurrió cada operación de negocio en el período, por resultado: success = aceptada, rejected = rechazada por una regla de negocio, unexpected = fallida de forma inesperada. Sólo aparecen las operaciones que ocurrieron. Sin login, registro ni API keys.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "custom": {
+            "align": "right",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rejected"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "unexpected"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "success",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "operation": "Operación",
+              "Value #A": "success",
+              "Value #B": "rejected",
+              "Value #C": "unexpected"
+            },
+            "indexByName": {
+              "Operación": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            }
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "any",
+            "filters": [
+              {
+                "fieldName": "success",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              },
+              {
+                "fieldName": "rejected",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              },
+              {
+                "fieldName": "unexpected",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (operation) (round(increase(business_operations_total{outcome=\"success\",operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range])))",
+          "legendFormat": "success",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (operation) (round(increase(business_operations_total{outcome=\"rejected\",operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range])))",
+          "legendFormat": "rejected",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (operation) (round(increase(business_operations_total{outcome=\"unexpected\",operation!~\"USER_REGISTERED|USER_LOGGED_IN|API_KEY_ISSUED\"}[$__range])))",
+          "legendFormat": "unexpected",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Tokens comprados y vendidos",
+      "description": "Tokens operados por minuto, separados en comprados (buy) y vendidos (sell). Ojo con cómo se cuenta: cada cruce tiene un comprador y un vendedor, y se suma una sola vez, del lado de la orden que lo inicia. Si una compra toma una venta que ya estaba publicada, suma en comprados; si una venta toma una compra publicada, suma en vendidos. Por eso la suma de las dos líneas es el total de tokens operados, pero cada línea sola no es \"todo lo que se compró\" o \"todo lo que se vendió\".",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "comprados"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "vendidos"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_tokens_traded_total{side=\"buy\"}[$__rate_interval]))",
+          "legendFormat": "comprados",
+          "interval": "1m"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_tokens_traded_total{side=\"sell\"}[$__rate_interval]))",
+          "legendFormat": "vendidos",
+          "interval": "1m"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
+      "title": "Créditos por token, comprados y vendidos",
+      "description": "Precio promedio por token, minuto a minuto, separado según el lado que inicia el cruce: comprados (buy) y vendidos (sell). Es créditos ÷ tokens de cada lado (market_volume_credits_total ÷ market_tokens_traded_total). Dos aclaraciones: en un mismo cruce comprador y vendedor pagan el mismo precio, así que la diferencia entre las dos líneas muestra a qué precio se cierra cuando empieza una compra frente a cuando empieza una venta; y sólo hay punto en los minutos con operaciones de ese lado. La tarjeta \"Precio / token\" es el promedio de los dos lados juntos.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "min": 0,
+          "noValue": "sin operaciones",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "comprados"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "vendidos"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_volume_credits_total{side=\"buy\"}[$__rate_interval])) / sum(increase(market_tokens_traded_total{side=\"buy\"}[$__rate_interval]))",
+          "legendFormat": "comprados",
+          "interval": "1m"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(market_volume_credits_total{side=\"sell\"}[$__rate_interval])) / sum(increase(market_tokens_traded_total{side=\"sell\"}[$__rate_interval]))",
+          "legendFormat": "vendidos",
+          "interval": "1m"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Negocio — Alertas y notificaciones",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "panels": []
+    },
+    {
+      "id": 34,
+      "type": "stat",
+      "title": "Alertas disparadas",
+      "description": "Alertas de precio disparadas dentro del rango del dashboard (alerts_triggered_total).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(alerts_triggered_total[$__range]))",
+          "legendFormat": "alertas",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "bargauge",
+      "title": "Notificaciones por entrega",
+      "description": "Notificaciones creadas dentro del rango del dashboard: live = llegó al usuario conectado, stored_only = quedó guardada porque no estaba conectado.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 6,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "live"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "stored_only"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "manual",
+        "minVizHeight": 18,
+        "maxVizHeight": 36,
+        "minVizWidth": 8,
+        "text": {
+          "titleSize": 13,
+          "valueSize": 20
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (delivery) (round(increase(notifications_created_total[$__range])))",
+          "legendFormat": "{{delivery}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "type": "stat",
+      "title": "% en vivo",
+      "description": "Porcentaje de las notificaciones del período que llegaron al usuario conectado en el momento (live) sobre el total (live + stored_only). Si baja, los usuarios no están conectados cuando se dispara su alerta y la notificación queda guardada en la bandeja. Verde desde el 80 %, amarillo desde el 50 %, rojo por debajo.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "noValue": "sin datos",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "red"
+              },
+              {
+                "value": 0.5,
+                "color": "yellow"
+              },
+              {
+                "value": 0.8,
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(notifications_created_total{delivery=\"live\"}[$__range])) / sum(increase(notifications_created_total[$__range]))",
+          "legendFormat": "en vivo",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "type": "row",
+      "title": "Negocio — Actividad y salud",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "panels": []
+    },
+    {
+      "id": 45,
+      "type": "stat",
+      "title": "Última sync y último recálculo",
+      "description": "Horas desde la última sincronización exitosa de WhoScored y de Football-Data, y desde el último recálculo de cotizaciones exitoso (incluida la simulación de mercado). Una corrida parcial o fallida no reinicia nada. Verde hasta 192 h (8 días), amarillo hasta 240 h (10 días) y rojo después: las syncs y el recálculo son semanales y los datos alimentan las cotizaciones. \"nunca\" significa que todavía no hubo ninguno registrado. No depende del rango del dashboard y sobrevive al reinicio del backend.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: h",
+          "decimals": 0,
+          "noValue": "sin datos",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 192,
+                "color": "yellow"
+              },
+              {
+                "value": 240,
+                "color": "red"
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "nunca",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((time() - sync_last_success_timestamp_seconds{source=\"whoscored\"}) / 3600) or on() vector(-1)",
+          "legendFormat": "WhoScored",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "((time() - sync_last_success_timestamp_seconds{source=\"football_data\"}) / 3600) or on() vector(-1)",
+          "legendFormat": "Football-Data",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(((time() - quote_last_recalculation_timestamp_seconds) / 3600) and on() (quote_last_recalculation_timestamp_seconds > 0)) or on() vector(-1)",
+          "legendFormat": "Recálculo",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "type": "stat",
+      "title": "Usuarios nuevos",
+      "description": "Registros exitosos de usuarios en el período (business_operations_total, operación USER_REGISTERED): cuánto crece el producto.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(round(increase(business_operations_total{operation=\"USER_REGISTERED\",outcome=\"success\"}[$__range])))",
+          "legendFormat": "usuarios nuevos",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "type": "stat",
+      "title": "Logins rechazados",
+      "description": "Intentos de login rechazados en el período, por credenciales inválidas (business_operations_total, operación USER_LOGGED_IN con resultado rejected). Un pico es la señal más temprana de alguien probando contraseñas. Verde en 0, amarillo desde 1 y rojo desde 10.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 10,
+                "color": "red"
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(round(increase(business_operations_total{operation=\"USER_LOGGED_IN\",outcome=\"rejected\"}[$__range])))",
+          "legendFormat": "logins rechazados",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
       "id": 10,
       "type": "row",
       "title": "Requests HTTP",
@@ -35,7 +1394,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 32
       },
       "panels": []
     },
@@ -52,7 +1411,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 1
+        "y": 33
       },
       "fieldConfig": {
         "defaults": {
@@ -86,7 +1445,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -133,7 +1492,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -176,7 +1535,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 50
       },
       "panels": []
     },
@@ -193,7 +1552,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 19
+        "y": 51
       },
       "fieldConfig": {
         "defaults": {
@@ -239,7 +1598,7 @@
         "h": 8,
         "w": 10,
         "x": 4,
-        "y": 19
+        "y": 51
       },
       "fieldConfig": {
         "defaults": {
@@ -289,7 +1648,7 @@
         "h": 8,
         "w": 10,
         "x": 14,
-        "y": 19
+        "y": 51
       },
       "fieldConfig": {
         "defaults": {
@@ -341,7 +1700,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 27
+        "y": 59
       },
       "fieldConfig": {
         "defaults": {
@@ -384,7 +1743,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 27
+        "y": 59
       },
       "fieldConfig": {
         "defaults": {
@@ -418,7 +1777,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 27
+        "y": 59
       },
       "fieldConfig": {
         "defaults": {

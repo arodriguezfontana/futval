@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { Clock } from '../../adapters/runtime/clock';
 import { IdGenerator } from '../../adapters/runtime/id-generator';
 import { CLOCK, ID_GENERATOR } from '../../modules/runtime/runtime.constants';
@@ -16,6 +16,9 @@ import { PlayerRepository } from '../../repositories/player/player.repository';
 import { PlayerNotFoundError } from '../../domain/player/errors/player-not-found.error';
 import { StrategyService } from './strategy.service';
 import { RunLock } from '../../shared/concurrency/run-lock';
+import { BusinessMetrics, RunTrigger } from '../../shared/observability/metrics/business-metrics';
+import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
+import { safely } from '../../shared/observability/metrics/safely';
 
 export interface RecalculateResult {
   recalculated: Array<{ userId: string; playerId: string; value: number; score: number }>;
@@ -49,7 +52,7 @@ export const QUOTATION_RECALCULATION_CRON = '0 3 * * 0';
  * recálculo global corriendo a la vez (409 si ya hay uno en curso).
  */
 @Injectable()
-export class QuotationService {
+export class QuotationService implements OnApplicationBootstrap {
   private readonly logger = new Logger(QuotationService.name);
   private readonly recalculationLock = new RunLock();
 
@@ -61,7 +64,25 @@ export class QuotationService {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
     private readonly strategies: StrategyService,
+    @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
   ) {}
+
+  /**
+   * Spec 031: siembra el momento del último recálculo desde la cotización más reciente guardada, para que la métrica
+   * `quote_last_recalculation_timestamp_seconds` sobreviva al reinicio. Sin cotizaciones no hay valor. Un fallo se
+   * registra en el log y nunca impide el arranque.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      const latest = await this.quoteRepository.findLatestCalculatedAt();
+      if (latest) this.metrics?.setQuoteLastRecalculation(latest);
+    } catch (error) {
+      this.logger.error(
+        'No se pudo sembrar el momento del último recálculo de cotizaciones.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
 
   /**
    * Calcula al vuelo el valor de un jugador, sin persistir nada.
@@ -142,12 +163,32 @@ export class QuotationService {
    * Lock a nivel sistema (409 si ya hay un recálculo global en curso). Las
    * combinaciones que fallan se saltean; la respuesta indica qué se procesó y
    * qué se salteó.
+   *
+   * Spec 031: `trigger` (quién inicia el recálculo: `manual` el controller, `scheduled` el cron) es OBLIGATORIO y
+   * sin valor por defecto, para que el compilador marque a cualquier llamador que lo omita. Esta función es
+   * el único dueño de la medición de su corrida (resultado y duración); un 409 por lock no cuenta como corrida.
    */
-  async recalculateAll(): Promise<RecalculateResult> {
+  async recalculateAll(trigger: RunTrigger): Promise<RecalculateResult> {
     return this.recalculationLock.runExclusive(
-      () => this.runRecalculation(),
+      () => this.runMeasuredRecalculation(trigger),
       () => new RecalculationInProgressError(),
     );
+  }
+
+  private async runMeasuredRecalculation(trigger: RunTrigger): Promise<RecalculateResult> {
+    const startedAtMs = this.clock.now().getTime();
+    let outcome: 'success' | 'failure' = 'failure';
+    try {
+      const result = await this.runRecalculation();
+      outcome = 'success';
+      safely(() => this.metrics?.setQuoteLastRecalculation(this.clock.now()));
+      return result;
+    } finally {
+      safely(() => {
+        const durationSeconds = Math.max(0, (this.clock.now().getTime() - startedAtMs) / 1000);
+        this.metrics?.recordQuoteRecalculation(trigger, outcome, durationSeconds);
+      });
+    }
   }
 
   private async runRecalculation(): Promise<RecalculateResult> {
@@ -217,7 +258,7 @@ export class QuotationService {
     }
     try {
       this.logger.log('Iniciando el recálculo semanal de cotizaciones...');
-      const result = await this.recalculateAll();
+      const result = await this.recalculateAll('scheduled');
       this.logger.log(
         `Recálculo semanal completado: ${result.recalculated.length} cotizaciones, ${result.skipped.length} salteadas.`,
       );
