@@ -137,12 +137,11 @@ describe('HttpFootballDataAdapter', () => {
       expect(mockCache.get).toHaveBeenCalledWith('futval:external:standings:PL');
     });
 
-    it('retorna lista vacía sin arrojar 500 si la API externa falla y no hay caché disponible', async () => {
+    it('propaga el error si la API externa falla y no hay caché disponible, para que la sync cuente la unidad como fallida', async () => {
       mockAxiosInstance.get.mockRejectedValue(new Error('500 Internal Server Error'));
 
-      const result = await adapter.fetchStandings('PL');
-
-      expect(result).toEqual([]);
+      await expect(adapter.fetchStandings('PL')).rejects.toThrow('500 Internal Server Error');
+      await expect(adapter.fetchMatches('PL')).rejects.toThrow('500 Internal Server Error');
     });
   });
 });

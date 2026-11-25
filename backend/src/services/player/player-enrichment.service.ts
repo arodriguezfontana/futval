@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Player } from '../../domain/player/player';
+import { Player, PlayerSnapshot } from '../../domain/player/player';
 import { PlayerFilters } from '../../domain/player/player-filters';
 import { PlayerPagination } from '../../domain/player/player-page';
 import { TeamRepository } from '../../repositories/competition/team.repository';
@@ -34,6 +34,15 @@ export interface PlayerRankingPageWithCrests {
   total: number;
 }
 
+/**
+ * Forma de lo que se guarda en Redis: igual que la respuesta, pero con el jugador como snapshot de datos (no como clase) y
+ * las fechas como texto. Un `Player` serializado con `JSON.stringify` perdería sus getters.
+ */
+type Cached<T extends { player: Player }> = Omit<T, 'player' | 'calculatedAt'> & {
+  player: PlayerSnapshot;
+  calculatedAt?: string;
+};
+
 @Injectable()
 export class PlayerEnrichmentService {
   constructor(
@@ -49,9 +58,9 @@ export class PlayerEnrichmentService {
   ): Promise<PlayerPageWithCrests> {
     const cacheKey = buildCacheKey('catalog', { ...filters, ...pagination });
     if (this.cache) {
-      const cached = await this.readCache<PlayerPageWithCrests>(cacheKey);
+      const cached = await this.readCache<{ items: Array<Cached<PlayerWithCrest>>; total: number }>(cacheKey);
       if (cached) {
-        return { ...cached, items: cached.items.map((item) => ({ ...item, player: this.rehydratePlayer(item.player) })) };
+        return { ...cached, items: cached.items.map((item) => ({ ...item, player: Player.restore(item.player) })) };
       }
     }
 
@@ -65,7 +74,8 @@ export class PlayerEnrichmentService {
 
     if (this.cache) {
       const ttl = Number(this.configService?.get<number>('REDIS_TTL_CATALOG', 3600)) || 3600;
-      await this.cache.set(cacheKey, result, ttl);
+      const payload = { total: result.total, items: result.items.map((item) => ({ ...item, player: item.player.toSnapshot() })) };
+      await this.cache.set(cacheKey, payload, ttl);
     }
     return result;
   }
@@ -77,14 +87,14 @@ export class PlayerEnrichmentService {
   ): Promise<PlayerRankingPageWithCrests> {
     const cacheKey = buildUserRankingCacheKey(userId, { ...filters, ...pagination });
     if (this.cache) {
-      const cached = await this.readCache<PlayerRankingPageWithCrests>(cacheKey);
+      const cached = await this.readCache<{ items: Array<Cached<RankedPlayerWithCrest>>; total: number }>(cacheKey);
       if (cached) {
         return {
           ...cached,
           items: cached.items.map((item) => ({
             ...item,
-            player: this.rehydratePlayer(item.player),
-            calculatedAt: new Date(item.calculatedAt),
+            player: Player.restore(item.player),
+            calculatedAt: new Date(item.calculatedAt as string),
           })),
         };
       }
@@ -105,7 +115,8 @@ export class PlayerEnrichmentService {
 
     if (this.cache) {
       const ttl = Number(this.configService?.get<number>('REDIS_TTL_RANKING', 86400)) || 86400;
-      await this.cache.set(cacheKey, result, ttl);
+      const payload = { total: result.total, items: result.items.map((item) => ({ ...item, player: item.player.toSnapshot() })) };
+      await this.cache.set(cacheKey, payload, ttl);
     }
     return result;
   }
@@ -113,9 +124,9 @@ export class PlayerEnrichmentService {
   async getPlayerByIdWithCrest(id: string): Promise<PlayerWithCrest> {
     const cacheKey = `futval:player:${id}`;
     if (this.cache) {
-      const cached = await this.readCache<PlayerWithCrest>(cacheKey);
+      const cached = await this.readCache<Cached<PlayerWithCrest>>(cacheKey);
       if (cached) {
-        return { ...cached, player: this.rehydratePlayer(cached.player) };
+        return { ...cached, player: Player.restore(cached.player) };
       }
     }
 
@@ -125,7 +136,7 @@ export class PlayerEnrichmentService {
 
     if (this.cache) {
       const ttl = Number(this.configService?.get<number>('REDIS_TTL_CATALOG', 3600)) || 3600;
-      await this.cache.set(cacheKey, result, ttl);
+      await this.cache.set(cacheKey, { ...result, player: player.toSnapshot() }, ttl);
     }
     return result;
   }
@@ -137,16 +148,6 @@ export class PlayerEnrichmentService {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Lo que vuelve de Redis es JSON plano: un `Player` serializado conserva sus campos privados (`_name`, `_team`, ...) pero
-   * pierde los getters, así que sin reconstruirlo `player.name` sería `undefined` en cada acierto de cache. Se vuelve a
-   * armar con `Player.restore` quitando el guion bajo de cada campo.
-   */
-  private rehydratePlayer(raw: Player): Player {
-    const props = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key.replace(/^_/, ''), value]));
-    return Player.restore(props as Parameters<typeof Player.restore>[0]);
   }
 
   /** Una sola consulta a `teams` por los equipos distintos de los jugadores: nombre WhoScored → escudo. */

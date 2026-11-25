@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { PlayerEntity } from '../../src/repositories/player/entities/player.entity';
 import { ValuationStrategyEntity } from '../../src/repositories/quotation/entities/valuation-strategy.entity';
 import { PlayerQuoteEntity } from '../../src/repositories/quotation/entities/player-quote.entity';
+import { RedisCacheService } from '../../src/shared/cache/redis-cache.service';
 import { createTestApp, TestContext } from '../test-app';
 
 describe('GET /players/ranking (e2e, spec 016 + 019-per-user-valuation-strategies)', () => {
@@ -122,6 +123,8 @@ describe('GET /players/ranking (e2e, spec 016 + 019-per-user-valuation-strategie
   beforeEach(async () => {
     await ctx.dataSource.query('DELETE FROM "player_quotes"');
     await ctx.dataSource.query('DELETE FROM "players"');
+    // Los datos se cambian directo en la base (sin eventos de invalidación): hay que vaciar el ranking cacheado.
+    await ctx.app.get(RedisCacheService).delByPrefix('futval:ranking:');
   });
 
   describe('US1: Consultar mi ranking general ordenado por valor (MVP)', () => {

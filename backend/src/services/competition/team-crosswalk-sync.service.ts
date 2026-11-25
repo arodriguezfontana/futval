@@ -88,6 +88,7 @@ export class TeamCrosswalkSyncService {
     if (this.cache) {
       await this.cache.delByPrefix('futval:catalog:');
       await this.cache.delByPrefix('futval:player:');
+      await this.cache.delByPrefix('futval:ranking:'); // el ranking también muestra el escudo del equipo
     }
 
     this.logger.log(`Crosswalk de equipos: ${resolvedTeams.length} resueltos, ${unresolved.length} sin resolver.`);

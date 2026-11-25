@@ -1,6 +1,27 @@
 import { League } from './enums/league';
 import { Position } from './enums/position';
 
+/** Datos de un jugador sin la clase: lo que `Player.restore` recibe y lo que `toSnapshot` devuelve (JSON seguro, p. ej. para un cache). */
+export interface PlayerSnapshot {
+  id: string;
+  name: string;
+  league: League;
+  team: string;
+  position: Position;
+  matchesPlayed?: number | null;
+  passesCompleted: number | null;
+  shots: number | null;
+  interceptions: number | null;
+  rating: number | null;
+  goals?: number | null;
+  assists?: number | null;
+  keyPasses?: number | null;
+  dribbles?: number | null;
+  totalTackles?: number | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
+}
+
 /**
  * Entidad de dominio. Sin decoradores de TypeORM ni conocimiento de NestJS, HTTP o
  * base de datos (constitución, Principio I). El catálogo es de sólo lectura vía API
@@ -27,25 +48,7 @@ export class Player {
     private readonly _redCards: number | null,
   ) {}
 
-  static restore(props: {
-    id: string;
-    name: string;
-    league: League;
-    team: string;
-    position: Position;
-    matchesPlayed?: number | null;
-    passesCompleted: number | null;
-    shots: number | null;
-    interceptions: number | null;
-    rating: number | null;
-    goals?: number | null;
-    assists?: number | null;
-    keyPasses?: number | null;
-    dribbles?: number | null;
-    totalTackles?: number | null;
-    yellowCards?: number | null;
-    redCards?: number | null;
-  }): Player {
+  static restore(props: PlayerSnapshot): Player {
     return new Player(
       props.id,
       props.name,
@@ -65,6 +68,29 @@ export class Player {
       props.yellowCards ?? null,
       props.redCards ?? null,
     );
+  }
+
+  /** Snapshot explícito con los nombres públicos de cada campo: no depende de cómo se llamen los campos privados. */
+  toSnapshot(): PlayerSnapshot {
+    return {
+      id: this._id,
+      name: this._name,
+      league: this._league,
+      team: this._team,
+      position: this._position,
+      matchesPlayed: this._matchesPlayed,
+      passesCompleted: this._passesCompleted,
+      shots: this._shots,
+      interceptions: this._interceptions,
+      rating: this._rating,
+      goals: this._goals,
+      assists: this._assists,
+      keyPasses: this._keyPasses,
+      dribbles: this._dribbles,
+      totalTackles: this._totalTackles,
+      yellowCards: this._yellowCards,
+      redCards: this._redCards,
+    };
   }
 
   get id(): string {

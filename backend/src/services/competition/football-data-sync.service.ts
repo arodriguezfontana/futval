@@ -21,6 +21,7 @@ import { BusinessMetrics, classifySyncRun, RunTrigger } from '../../shared/obser
 import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
 import { safelyAsync } from '../../shared/observability/metrics/safely';
 import { SyncLastSuccessService } from '../sync/sync-last-success.service';
+import { RedisCacheService } from '../../shared/cache/redis-cache.service';
 
 export const TARGET_LEAGUES = ['PL', 'BL1', 'PD', 'SA', 'FL1'];
 
@@ -38,6 +39,7 @@ export class FootballDataSyncService {
     @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
     @Optional() private readonly lastSuccess?: SyncLastSuccessService,
     @Optional() @Inject(CLOCK) private readonly clock?: Clock,
+    @Optional() private readonly cache?: RedisCacheService,
   ) {}
 
   public setRequestDelay(ms: number): void {
@@ -106,7 +108,15 @@ export class FootballDataSyncService {
       aborted = true;
       throw error;
     } finally {
+      await this.invalidatePlayerCaches();
       await this.recordRunMetrics(trigger, summary, aborted, startedAtMs);
+    }
+  }
+
+  /** Spec 031 (FR-007): tras una sync se descarta lo cacheado (también si fue parcial). `delByPrefix` nunca lanza. */
+  private async invalidatePlayerCaches(): Promise<void> {
+    for (const prefix of ['futval:catalog:', 'futval:player:', 'futval:ranking:']) {
+      await this.cache?.delByPrefix(prefix);
     }
   }
 

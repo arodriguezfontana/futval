@@ -279,7 +279,8 @@ describe('PlayerEnrichmentService', () => {
       expect(playerService.listPlayers).toHaveBeenCalled();
       expect(mockCache.set).toHaveBeenCalledWith(
         expect.stringMatching(/^futval:catalog:[a-f0-9]{16}$/),
-        result,
+        // Se guarda el snapshot de datos del jugador, no la clase (un JSON de la clase perdería los getters).
+        { total: 1, items: [{ player: somePlayer.toSnapshot(), crestUrl: result.items[0].crestUrl }] },
         3600,
       );
     });

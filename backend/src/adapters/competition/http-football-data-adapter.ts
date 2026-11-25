@@ -8,7 +8,10 @@ import {
 import { RedisCacheService } from '../../shared/cache/redis-cache.service';
 
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
-const EXTERNAL_CACHE_TTL_SECONDS = 604800; // 7 días
+const DEFAULT_EXTERNAL_CACHE_TTL_SECONDS = 604800; // 7 días
+
+/** Se lee en cada uso: `.env` lo carga ConfigModule después de importar este archivo. */
+const externalCacheTtl = (): number => Number(process.env.REDIS_EXTERNAL_CACHE_TTL) || DEFAULT_EXTERNAL_CACHE_TTL_SECONDS;
 
 interface FootballDataStandingsTeam {
   id: number;
@@ -132,7 +135,7 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
       }));
 
       if (rows.length > 0 && this.cache) {
-        await this.cache.set(cacheKey, rows, EXTERNAL_CACHE_TTL_SECONDS);
+        await this.cache.set(cacheKey, rows, externalCacheTtl());
       }
 
       return rows;
@@ -149,7 +152,9 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
         }
       }
 
-      return [];
+      // Sin nada que servir: se propaga el error para que quien sincroniza cuente la unidad como fallida y deje intactos los
+      // datos que ya tiene (un `[]` sería indistinguible de una liga sin datos).
+      throw error;
     }
   }
 
@@ -183,7 +188,7 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
       }));
 
       if (rows.length > 0 && this.cache) {
-        await this.cache.set(cacheKey, rows, EXTERNAL_CACHE_TTL_SECONDS);
+        await this.cache.set(cacheKey, rows, externalCacheTtl());
       }
 
       return rows;
@@ -200,7 +205,8 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
         }
       }
 
-      return [];
+      // Sin nada que servir: se propaga el error (ver fetchStandings).
+      throw error;
     }
   }
 }

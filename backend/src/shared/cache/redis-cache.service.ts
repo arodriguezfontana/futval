@@ -28,12 +28,9 @@ export class RedisCacheService implements OnModuleDestroy {
           lazyConnect: true,
           maxRetriesPerRequest: 1,
           enableOfflineQueue: false,
-          retryStrategy: (times) => {
-            if (times > 3) {
-              return null; // Detiene reintentos infinitos si Redis no está disponible
-            }
-            return Math.min(times * 100, 1000);
-          },
+          // Reintenta siempre (espera creciente, tope 5 s) para reconectar solo cuando Redis vuelve. Mientras tanto no se
+          // encolan comandos (`enableOfflineQueue: false`): cada operación falla enseguida y se atiende sin caché.
+          retryStrategy: (times) => Math.min(times * 200, 5000),
         });
 
         this.client.on('connect', () => {

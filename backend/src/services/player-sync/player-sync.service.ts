@@ -121,10 +121,7 @@ export class PlayerSyncService {
     let aborted = false;
     try {
       await this.executeSync(summary);
-      if (this.cache) {
-        await this.cache.delByPrefix('futval:catalog:');
-        await this.cache.delByPrefix('futval:player:');
-      }
+      await this.invalidatePlayerCaches();
       this.runs.set(runId, {
         runId,
         status: 'completed',
@@ -139,6 +136,8 @@ export class PlayerSyncService {
         `Corrida ${runId} abortada por error inesperado.`,
         error instanceof Error ? error.stack : String(error),
       );
+      // Una corrida abortada puede haber guardado algunos equipos antes de fallar.
+      await this.invalidatePlayerCaches();
       this.runs.set(runId, {
         runId,
         status: 'failed',
@@ -151,6 +150,16 @@ export class PlayerSyncService {
     } finally {
       this.runLock.release();
       await this.recordRunMetrics(trigger, summary, aborted, startedAtMs);
+    }
+  }
+
+  /**
+   * La sync cambia, da de alta y da de baja jugadores: se descartan catálogo, detalle y también los rankings de todos los
+   * usuarios (muestran datos del jugador y excluyen a los dados de baja). `delByPrefix` nunca lanza.
+   */
+  private async invalidatePlayerCaches(): Promise<void> {
+    for (const prefix of ['futval:catalog:', 'futval:player:', 'futval:ranking:']) {
+      await this.cache?.delByPrefix(prefix);
     }
   }
 
