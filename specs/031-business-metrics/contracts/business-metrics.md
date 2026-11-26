@@ -1,5 +1,9 @@
 # Contrato: métricas de negocio en `GET /metrics`
 
+> **Cambio posterior (2026-11-25):** se quitaron las métricas sin panel en Grafana: `market_order_rejections_total`,
+> `sync_runs_total`, `sync_run_duration_seconds`, `quote_recalculations_total` y `quote_recalculation_duration_seconds`.
+> Donde este documento las menciona, ya no aplica. Se mantienen la última sync exitosa y el momento del último recálculo.
+
 No se agregan endpoints: las series salen en el `GET /metrics` existente (público, formato de texto de Prometheus; ver [029](../../029-http-metrics-sla/contracts/metrics-api.md)). Este contrato fija nombres, tipos, etiquetas y semántica; los valores de etiquetas están en [data-model.md](../data-model.md).
 
 ## Series expuestas

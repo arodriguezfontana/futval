@@ -22,7 +22,6 @@ describe('PlayerSyncService: invalidación de caché', () => {
       new FixedClock(),
       new SequentialIdGenerator('run'),
       undefined,
-      undefined,
       { delByPrefix } as unknown as RedisCacheService,
     );
 

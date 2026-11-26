@@ -17,8 +17,6 @@ import { SyncInProgressError } from '../../domain/sync/errors/sync-in-progress.e
 import { RunLock } from '../../shared/concurrency/run-lock';
 import { Clock } from '../../adapters/runtime/clock';
 import { CLOCK } from '../../modules/runtime/runtime.constants';
-import { BusinessMetrics, classifySyncRun, RunTrigger } from '../../shared/observability/metrics/business-metrics';
-import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
 import { safelyAsync } from '../../shared/observability/metrics/safely';
 import { SyncLastSuccessService } from '../sync/sync-last-success.service';
 import { RedisCacheService } from '../../shared/cache/redis-cache.service';
@@ -36,7 +34,6 @@ export class FootballDataSyncService {
     private readonly adapter: FootballDataAdapter,
     private readonly matchRepository: MatchRepository,
     private readonly standingRepository: StandingRepository,
-    @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
     @Optional() private readonly lastSuccess?: SyncLastSuccessService,
     @Optional() @Inject(CLOCK) private readonly clock?: Clock,
     @Optional() private readonly cache?: RedisCacheService,
@@ -59,7 +56,7 @@ export class FootballDataSyncService {
    */
   async triggerManualRun(): Promise<FootballDataSyncSummary> {
     return this.runLock.runExclusive(
-      () => this.runMeasured('manual'),
+      () => this.runSync(),
       () => new SyncInProgressError(),
     );
   }
@@ -76,7 +73,7 @@ export class FootballDataSyncService {
     const ran = await this.runLock.runIfFree(async () => {
       try {
         this.logger.log('Starting scheduled Football-Data synchronization...');
-        await this.runMeasured('scheduled');
+        await this.runSync();
         this.logger.log('Scheduled Football-Data synchronization finished.');
       } catch (error) {
         this.logger.error(
@@ -93,23 +90,18 @@ export class FootballDataSyncService {
   }
 
   /**
-   * Spec 031: corre la sincronización midiéndola. Cuenta la corrida (origen y resultado) y su duración; sólo
-   * una corrida `success` (todas las ligas bien) avanza la última sincronización exitosa. El origen lo pasa
-   * quien inicia la corrida (el cron o el disparo manual). Un 409 por lock no llega acá: no es una corrida.
+   * Corre la sincronización y, al terminar (bien o mal), descarta lo cacheado. Sólo una corrida sin ligas fallidas
+   * avanza la última sincronización exitosa; una abortada nunca.
    */
-  private async runMeasured(trigger: RunTrigger): Promise<FootballDataSyncSummary> {
-    const startedAtMs = this.now().getTime();
-    let summary: FootballDataSyncSummary | undefined;
-    let aborted = false;
+  private async runSync(): Promise<FootballDataSyncSummary> {
+    let succeeded = false;
     try {
-      summary = await this.syncAllLeagues();
+      const summary = await this.syncAllLeagues();
+      succeeded = summary.failedLeagues.length === 0;
       return summary;
-    } catch (error) {
-      aborted = true;
-      throw error;
     } finally {
       await this.invalidatePlayerCaches();
-      await this.recordRunMetrics(trigger, summary, aborted, startedAtMs);
+      if (succeeded) await this.recordLastSuccess();
     }
   }
 
@@ -120,26 +112,10 @@ export class FootballDataSyncService {
     }
   }
 
-  /** Nunca lanza: medir no altera la corrida (spec 031, FR-013). */
-  private async recordRunMetrics(
-    trigger: RunTrigger,
-    summary: FootballDataSyncSummary | undefined,
-    aborted: boolean,
-    startedAtMs: number,
-  ): Promise<void> {
+  /** Nunca lanza: registrar la fecha no altera la corrida (spec 031, FR-013). */
+  private async recordLastSuccess(): Promise<void> {
     await safelyAsync(async () => {
-      const finishedAt = this.now();
-      const failed = summary?.failedLeagues.length ?? 0;
-      const outcome = classifySyncRun({
-        aborted,
-        unitsSucceeded: (summary?.leagues.length ?? 0) - failed,
-        unitsFailed: failed,
-      });
-      const durationSeconds = Math.max(0, (finishedAt.getTime() - startedAtMs) / 1000);
-      this.metrics?.recordSyncRun('football_data', trigger, outcome, durationSeconds);
-      if (outcome === 'success') {
-        await this.lastSuccess?.record('football_data', finishedAt);
-      }
+      await this.lastSuccess?.record('football_data', this.now());
     });
   }
 

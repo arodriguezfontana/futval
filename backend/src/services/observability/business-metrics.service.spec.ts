@@ -40,36 +40,12 @@ describe('BusinessMetricsService', () => {
     expect(out).toContain('market_tokens_traded_total{side="sell"} 1');
   });
 
-  it('recordOrderRejection cuenta por motivo', async () => {
-    business.recordOrderRejection('insufficient_tokens');
-    business.recordOrderRejection('other');
-    const out = await text();
-    expect(out).toContain('market_order_rejections_total{reason="insufficient_tokens"} 1');
-    expect(out).toContain('market_order_rejections_total{reason="other"} 1');
-  });
-
-  it('recordSyncRun cuenta la corrida y observa la duración', async () => {
-    business.recordSyncRun('whoscored', 'manual', 'partial', 90);
-    const out = await text();
-    expect(out).toContain('sync_runs_total{source="whoscored",trigger="manual",outcome="partial"} 1');
-    expect(out).toContain('sync_run_duration_seconds_bucket{le="120",source="whoscored",trigger="manual"} 1');
-    expect(out).toContain('sync_run_duration_seconds_bucket{le="60",source="whoscored",trigger="manual"} 0');
-    expect(out).toContain('sync_run_duration_seconds_count{source="whoscored",trigger="manual"} 1');
-  });
-
   it('setSyncLastSuccess fija el gauge en segundos Unix y no existe antes', async () => {
     expect(await text()).not.toContain('sync_last_success_timestamp_seconds{');
     business.setSyncLastSuccess('football_data', new Date('2026-11-13T10:00:00.000Z'));
     expect(await text()).toContain(
       `sync_last_success_timestamp_seconds{source="football_data"} ${Date.parse('2026-11-13T10:00:00.000Z') / 1000}`,
     );
-  });
-
-  it('recordQuoteRecalculation cuenta por origen y resultado y observa la duración', async () => {
-    business.recordQuoteRecalculation('scheduled', 'failure', 0.4);
-    const out = await text();
-    expect(out).toContain('quote_recalculations_total{trigger="scheduled",outcome="failure"} 1');
-    expect(out).toContain('quote_recalculation_duration_seconds_count{trigger="scheduled"} 1');
   });
 
   it('alertas, notificaciones por entrega y conexiones SSE', async () => {
@@ -87,16 +63,14 @@ describe('BusinessMetricsService', () => {
     expect(out).toContain('sse_connections_active 1');
   });
 
-  it('los HELP de business_operations_total y market_order_rejections_total llevan las aclaraciones', async () => {
+  it('el HELP de business_operations_total lleva la aclaración', async () => {
     const out = await text();
     expect(out).toMatch(/# HELP business_operations_total .*corrida aceptada, no corrida terminada/);
-    expect(out).toMatch(/# HELP market_order_rejections_total .*sólo el alta de órdenes/);
   });
 
   describe('nunca lanza', () => {
     it('ante un fallo interno de prom-client (valores inválidos) se ignora', () => {
       expect(() => business.recordTokensTraded('buy', -1, -1)).not.toThrow();
-      expect(() => business.recordSyncRun('whoscored', 'manual', 'success', Number.NaN)).not.toThrow();
     });
 
     it('con un Registry roto ningún método lanza', () => {
@@ -109,10 +83,7 @@ describe('BusinessMetricsService', () => {
       expect(() => {
         broken.recordOperation('X', 'success');
         broken.recordTokensTraded('sell', 1, 1);
-        broken.recordOrderRejection('other');
-        broken.recordSyncRun('whoscored', 'scheduled', 'failure', 1);
         broken.setSyncLastSuccess('whoscored', new Date());
-        broken.recordQuoteRecalculation('manual', 'success', 1);
         broken.recordAlertTriggered();
         broken.recordNotificationCreated('live');
         broken.sseConnectionOpened();

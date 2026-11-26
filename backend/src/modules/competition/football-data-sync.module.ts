@@ -12,7 +12,6 @@ import { FootballDataSyncService } from '../../services/competition/football-dat
 import { FootballDataSyncController } from '../../controllers/competition/football-data-sync.controller';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { RuntimeModule } from '../runtime/runtime.module';
-import { MetricsModule } from '../observability/metrics.module';
 import { SyncLastSuccessModule } from '../sync/sync-last-success.module';
 import { ApiKeyGuard } from '../../guards/api-key/api-key.guard';
 import {
@@ -30,7 +29,6 @@ import {
     ScheduleModule.forRoot(),
     ApiKeyModule,
     RuntimeModule,
-    MetricsModule,
     SyncLastSuccessModule,
   ],
   controllers: [FootballDataSyncController],

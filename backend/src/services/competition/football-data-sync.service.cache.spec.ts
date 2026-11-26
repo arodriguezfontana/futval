@@ -22,7 +22,6 @@ describe('FootballDataSyncService: invalidación de caché', () => {
       {} as StandingRepository,
       undefined,
       undefined,
-      undefined,
       { delByPrefix } as unknown as RedisCacheService,
     );
     service.setRequestDelay(0);

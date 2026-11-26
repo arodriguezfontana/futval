@@ -6,10 +6,6 @@ import { HttpFootballDataAdapter } from '../../src/adapters/competition/http-foo
 import { MatchRepository } from '../../src/repositories/competition/match.repository';
 import { StandingRepository } from '../../src/repositories/competition/standing.repository';
 import { RedisCacheService } from '../../src/shared/cache/redis-cache.service';
-import {
-  BusinessMetricsDouble,
-  createBusinessMetricsDouble,
-} from '../../src/shared/observability/metrics/business-metrics.testing';
 import { FootballDataSyncService, TARGET_LEAGUES } from '../../src/services/competition/football-data-sync.service';
 import { SyncLastSuccessService } from '../../src/services/sync/sync-last-success.service';
 
@@ -127,39 +123,35 @@ describe('Football-Data: fallas reales del proveedor y fallback (spec 031, US3)'
     });
   });
 
-  describe('la sincronización cuenta la falla en vez de dar por buena una corrida vacía', () => {
+  describe('la sincronización registra la falla en vez de dar por buena una corrida vacía', () => {
     const build = (withCache: boolean) => {
-      const metrics: BusinessMetricsDouble = createBusinessMetricsDouble();
       const lastSuccess = { record: jest.fn().mockResolvedValue(undefined) };
       const service = new FootballDataSyncService(
         adapterWith(withCache),
         { upsertMatches: jest.fn().mockResolvedValue(undefined) } as unknown as MatchRepository,
         { upsertStandings: jest.fn().mockResolvedValue(undefined) } as unknown as StandingRepository,
-        metrics,
         lastSuccess as unknown as SyncLastSuccessService,
       );
       service.setRequestDelay(0);
-      return { service, metrics, lastSuccess };
+      return { service, lastSuccess };
     };
 
-    it('proveedor caído y sin cache: todas las ligas fallan -> corrida failure y la última sync NO avanza', async () => {
+    it('proveedor caído y sin cache: todas las ligas fallan -> la última sync exitosa NO avanza', async () => {
       mode = 'error-500';
-      const { service, metrics, lastSuccess } = build(false);
+      const { service, lastSuccess } = build(false);
 
       const summary = await service.triggerManualRun();
 
       expect(summary.failedLeagues).toHaveLength(TARGET_LEAGUES.length);
-      expect(metrics.recordSyncRun).toHaveBeenCalledWith('football_data', 'manual', 'failure', expect.any(Number));
       expect(lastSuccess.record).not.toHaveBeenCalled();
     });
 
-    it('proveedor sano: la corrida es success y avanza la última sync', async () => {
-      const { service, metrics, lastSuccess } = build(true);
+    it('proveedor sano: avanza la última sync', async () => {
+      const { service, lastSuccess } = build(true);
 
       const summary = await service.triggerManualRun();
 
       expect(summary.failedLeagues).toEqual([]);
-      expect(metrics.recordSyncRun).toHaveBeenCalledWith('football_data', 'manual', 'success', expect.any(Number));
       expect(lastSuccess.record).toHaveBeenCalledWith('football_data', expect.any(Date));
     });
   });

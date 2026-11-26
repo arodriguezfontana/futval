@@ -15,7 +15,7 @@ import type { BusinessMetrics } from '../../shared/observability/metrics/busines
 import type { QuotationService } from '../quotation/quotation.service';
 import { OrdersService } from './orders.service';
 
-/** 031-US1: tokens, volumen y rechazos se miden tras el commit y sin alterar el resultado de la orden. */
+/** 031-US1: tokens y volumen se miden tras el commit y sin alterar el resultado de la orden. */
 describe('OrdersService — métricas de negocio', () => {
   let service: OrdersService;
   let orderRepo: Record<string, jest.Mock>;
@@ -43,10 +43,7 @@ describe('OrdersService — métricas de negocio', () => {
     metrics = {
       recordOperation: jest.fn(),
       recordTokensTraded: jest.fn(),
-      recordOrderRejection: jest.fn(),
-      recordSyncRun: jest.fn(),
       setSyncLastSuccess: jest.fn(),
-      recordQuoteRecalculation: jest.fn(),
       setQuoteLastRecalculation: jest.fn(),
       recordAlertTriggered: jest.fn(),
       recordNotificationCreated: jest.fn(),
@@ -99,7 +96,6 @@ describe('OrdersService — métricas de negocio', () => {
 
     expect(metrics.recordTokensTraded).toHaveBeenCalledWith('buy', 4, 100);
     expect(order).toEqual(['commit', 'metric']);
-    expect(metrics.recordOrderRejection).not.toHaveBeenCalled();
   });
 
   it('una venta con fills usa el lado sell', async () => {
@@ -133,45 +129,26 @@ describe('OrdersService — métricas de negocio', () => {
     expect(metrics.recordTokensTraded).toHaveBeenCalledWith('buy', 0, 0);
   });
 
-  it('una transacción que se revierte no suma nada ni cuenta rechazo', async () => {
+  it('una transacción que se revierte no suma nada', async () => {
     txManager.run.mockRejectedValue(new Error('rollback'));
 
     await expect(service.createOrder('buyer', 'player-1', OrderSide.BUY, 4)).rejects.toThrow('rollback');
 
     expect(metrics.recordTokensTraded).not.toHaveBeenCalled();
-    expect(metrics.recordOrderRejection).not.toHaveBeenCalled();
   });
 
-  it('una venta sin tokens cuenta insufficient_tokens y ningún contador de éxito', async () => {
+  it('una orden rechazada no suma tokens ni volumen', async () => {
     holdingRepo.findByUserAndPlayer.mockResolvedValue(null);
-
     await expect(service.createOrder('seller', 'player-1', OrderSide.SELL, 1)).rejects.toThrow(InsufficientHoldingError);
 
-    expect(metrics.recordOrderRejection).toHaveBeenCalledWith('insufficient_tokens');
-    expect(metrics.recordTokensTraded).not.toHaveBeenCalled();
-  });
-
-  it('otro rechazo de dominio cuenta other', async () => {
     playerRepo.findById.mockResolvedValue(null);
-
     await expect(service.createOrder('buyer', 'player-1', OrderSide.BUY, 1)).rejects.toThrow(PlayerNotFoundError);
 
-    expect(metrics.recordOrderRejection).toHaveBeenCalledWith('other');
-  });
-
-  it('un error inesperado no cuenta como rechazo', async () => {
-    quotation.valuate.mockRejectedValue(new Error('boom'));
-
-    await expect(service.createOrder('buyer', 'player-1', OrderSide.BUY, 1)).rejects.toThrow('boom');
-
-    expect(metrics.recordOrderRejection).not.toHaveBeenCalled();
+    expect(metrics.recordTokensTraded).not.toHaveBeenCalled();
   });
 
   it('un BusinessMetrics que lanza no altera el resultado ni el error', async () => {
     metrics.recordTokensTraded.mockImplementation(() => {
-      throw new Error('métricas rotas');
-    });
-    metrics.recordOrderRejection.mockImplementation(() => {
       throw new Error('métricas rotas');
     });
 
@@ -181,12 +158,11 @@ describe('OrdersService — métricas de negocio', () => {
     await expect(service.createOrder('buyer', 'player-1', OrderSide.BUY, 1)).rejects.toThrow(PlayerNotFoundError);
   });
 
-  it('cancelar una orden no mide tokens ni rechazos de alta', async () => {
+  it('cancelar una orden no mide tokens', async () => {
     orderRepo.findByIdWithLock = jest.fn().mockResolvedValue(null);
 
     await expect(service.cancelOrder('x', 'user')).rejects.toBeDefined();
 
-    expect(metrics.recordOrderRejection).not.toHaveBeenCalled();
     expect(metrics.recordTokensTraded).not.toHaveBeenCalled();
   });
 });

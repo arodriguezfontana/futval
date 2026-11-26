@@ -26,10 +26,7 @@ import { QuotationService } from '../quotation/quotation.service';
 import { StrategyProvisioningService } from '../quotation/strategy-provisioning.service';
 import { MarketSimulationService } from './market-simulation.service';
 
-/**
- * 031-US3: la simulación de mercado cuenta como UN recálculo `manual`. No pasa por
- * `QuotationService.recalculateAll` (que mide sus propias corridas): si pasara, contaría dos veces.
- */
+/** 031: la simulación de mercado fija el momento del último recálculo. No pasa por `QuotationService.recalculateAll`. */
 describe('MarketSimulationService — métricas de negocio', () => {
   const adminEmail = 'abi_admin@ejemplo.com';
   const adminUser = User.register('admin-uuid-1', Email.create(adminEmail), 'hash', new Date(), UserRole.ADMIN, 'admin');
@@ -113,33 +110,30 @@ describe('MarketSimulationService — métricas de negocio', () => {
     );
   });
 
-  it('simulate() mide UN recálculo manual/success y NO invoca recalculateAll', async () => {
+  it('simulate() fija el último recálculo una vez y NO invoca recalculateAll', async () => {
     const result = await service.simulate();
 
     expect(result.success).toBe(true);
-    expect(metrics.recordQuoteRecalculation).toHaveBeenCalledTimes(1);
-    expect(metrics.recordQuoteRecalculation).toHaveBeenCalledWith('manual', 'success', 0);
-    // Dueño único de la medición: si esto falla, la simulación pasó por recalculateAll y debe dejar de medir por su cuenta.
+    expect(metrics.setQuoteLastRecalculation).toHaveBeenCalledTimes(1);
     expect(quotation.recalculateAll).not.toHaveBeenCalled();
   });
 
-  it('un fallo al sembrar las cotizaciones cuenta manual/failure una sola vez y relanza el error', async () => {
+  it('un fallo al sembrar las cotizaciones no lo modifica y relanza el error', async () => {
     const boom = new Error('base caída');
     playerQuotes.saveMany.mockRejectedValue(boom);
 
     await expect(service.simulate()).rejects.toBe(boom);
 
-    expect(metrics.recordQuoteRecalculation).toHaveBeenCalledTimes(1);
-    expect(metrics.recordQuoteRecalculation).toHaveBeenCalledWith('manual', 'failure', 0);
+    expect(metrics.setQuoteLastRecalculation).not.toHaveBeenCalled();
   });
 
-  it('un catálogo vacío no es un recálculo: no cuenta', async () => {
+  it('un catálogo vacío no es un recálculo: no lo modifica', async () => {
     (service as unknown as { players: { findAllActive: jest.Mock } }).players.findAllActive.mockResolvedValue([]);
 
     const result = await service.simulate();
 
     expect(result.success).toBe(false);
-    expect(metrics.recordQuoteRecalculation).not.toHaveBeenCalled();
+    expect(metrics.setQuoteLastRecalculation).not.toHaveBeenCalled();
   });
 
   it('un BusinessMetrics que lanza no altera el resultado de la simulación', async () => {

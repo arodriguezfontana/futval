@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Counter, Gauge, Histogram } from 'prom-client';
+import { Counter, Gauge } from 'prom-client';
 import {
   BUSINESS_OPERATIONS,
   BUSINESS_METRIC_HELP,
@@ -10,18 +10,7 @@ import {
   NotificationDelivery,
   OPERATION_OUTCOMES,
   OperationOutcome,
-  RECALCULATION_DURATION_BUCKETS_SECONDS,
-  RECALCULATION_OUTCOMES,
-  RecalculationOutcome,
-  REJECTION_REASONS,
-  RejectionReason,
-  RUN_TRIGGERS,
-  RunTrigger,
   SIDES,
-  SYNC_DURATION_BUCKETS_SECONDS,
-  SYNC_OUTCOMES,
-  SYNC_SOURCES,
-  SyncOutcome,
   SyncSource,
 } from '../../shared/observability/metrics/business-metrics';
 import { safely } from '../../shared/observability/metrics/safely';
@@ -39,12 +28,7 @@ export class BusinessMetricsService implements BusinessMetrics {
   private readonly operations: Counter<'operation' | 'outcome'>;
   private readonly tokensTraded: Counter<'side'>;
   private readonly volumeCredits: Counter<'side'>;
-  private readonly orderRejections: Counter<'reason'>;
-  private readonly syncRuns: Counter<'source' | 'trigger' | 'outcome'>;
-  private readonly syncDuration: Histogram<'source' | 'trigger'>;
   private readonly syncLastSuccess: Gauge<'source'>;
-  private readonly quoteRecalculations: Counter<'trigger' | 'outcome'>;
-  private readonly quoteRecalculationDuration: Histogram<'trigger'>;
   private readonly quoteLastRecalculation: Gauge;
   private readonly alertsTriggered: Counter;
   private readonly notificationsCreated: Counter<'delivery'>;
@@ -63,42 +47,10 @@ export class BusinessMetricsService implements BusinessMetrics {
     });
     this.tokensTraded = new Counter({ name: names.tokensTraded, help: help.tokensTraded, labelNames: ['side'], registers });
     this.volumeCredits = new Counter({ name: names.volumeCredits, help: help.volumeCredits, labelNames: ['side'], registers });
-    this.orderRejections = new Counter({
-      name: names.orderRejections,
-      help: help.orderRejections,
-      labelNames: ['reason'],
-      registers,
-    });
-    this.syncRuns = new Counter({
-      name: names.syncRuns,
-      help: help.syncRuns,
-      labelNames: ['source', 'trigger', 'outcome'],
-      registers,
-    });
-    this.syncDuration = new Histogram({
-      name: names.syncDuration,
-      help: help.syncDuration,
-      labelNames: ['source', 'trigger'],
-      buckets: [...SYNC_DURATION_BUCKETS_SECONDS],
-      registers,
-    });
     this.syncLastSuccess = new Gauge({
       name: names.syncLastSuccess,
       help: help.syncLastSuccess,
       labelNames: ['source'],
-      registers,
-    });
-    this.quoteRecalculations = new Counter({
-      name: names.quoteRecalculations,
-      help: help.quoteRecalculations,
-      labelNames: ['trigger', 'outcome'],
-      registers,
-    });
-    this.quoteRecalculationDuration = new Histogram({
-      name: names.quoteRecalculationDuration,
-      help: help.quoteRecalculationDuration,
-      labelNames: ['trigger'],
-      buckets: [...RECALCULATION_DURATION_BUCKETS_SECONDS],
       registers,
     });
     this.quoteLastRecalculation = new Gauge({
@@ -136,17 +88,6 @@ export class BusinessMetricsService implements BusinessMetrics {
         this.tokensTraded.inc({ side }, 0);
         this.volumeCredits.inc({ side }, 0);
       }
-      for (const reason of REJECTION_REASONS) this.orderRejections.inc({ reason }, 0);
-      for (const source of SYNC_SOURCES) {
-        for (const trigger of RUN_TRIGGERS) {
-          this.syncDuration.zero({ source, trigger });
-          for (const outcome of SYNC_OUTCOMES) this.syncRuns.inc({ source, trigger, outcome }, 0);
-        }
-      }
-      for (const trigger of RUN_TRIGGERS) {
-        this.quoteRecalculationDuration.zero({ trigger });
-        for (const outcome of RECALCULATION_OUTCOMES) this.quoteRecalculations.inc({ trigger, outcome }, 0);
-      }
       for (const delivery of NOTIFICATION_DELIVERIES) this.notificationsCreated.inc({ delivery }, 0);
     });
   }
@@ -162,26 +103,8 @@ export class BusinessMetricsService implements BusinessMetrics {
     });
   }
 
-  recordOrderRejection(reason: RejectionReason): void {
-    safely(() => this.orderRejections.inc({ reason }));
-  }
-
-  recordSyncRun(source: SyncSource, trigger: RunTrigger, outcome: SyncOutcome, durationSeconds: number): void {
-    safely(() => {
-      this.syncRuns.inc({ source, trigger, outcome });
-      this.syncDuration.observe({ source, trigger }, durationSeconds);
-    });
-  }
-
   setSyncLastSuccess(source: SyncSource, at: Date): void {
     safely(() => this.syncLastSuccess.set({ source }, at.getTime() / 1000));
-  }
-
-  recordQuoteRecalculation(trigger: RunTrigger, outcome: RecalculationOutcome, durationSeconds: number): void {
-    safely(() => {
-      this.quoteRecalculations.inc({ trigger, outcome });
-      this.quoteRecalculationDuration.observe({ trigger }, durationSeconds);
-    });
   }
 
   setQuoteLastRecalculation(at: Date): void {

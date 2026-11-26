@@ -95,7 +95,7 @@ export class MarketSimulationService {
     const { transactionsCount, holdingsCount, adminOrdersCount, marketOrdersCount } =
       await this.seedMarketActivityIfNeeded(admin, bots, simPlayers, refPrices, tDate);
 
-    const { quotesCount, quotesSummary } = await this.seedQuotesMeasured(admin.id, activePlayers, refPrices, tDate);
+    const { quotesCount, quotesSummary } = await this.seedQuotesAndMark(admin.id, activePlayers, refPrices, tDate);
 
     this.logger.log(
       `Simulación completada con éxito: ${holdingsCount} holdings, ${transactionsCount} transacciones, ${adminOrdersCount} órdenes admin, ${marketOrdersCount} órdenes de mercado, ${quotesCount} cotizaciones.`,
@@ -204,31 +204,16 @@ export class MarketSimulationService {
     return orders.length;
   }
 
-  /**
-   * Spec 031: la simulación de mercado cuenta como un recálculo `manual`. Esta función es el ÚNICO dueño de esa
-   * medición: la simulación siembra las cotizaciones y emite el evento por su cuenta y NO pasa por
-   * `QuotationService.recalculateAll` (que mide sus propias corridas). Si algún día pasara por ahí, tendría
-   * que dejar de medir acá para no contar dos veces (lo vigilan un unit y un e2e).
-   */
-  private async seedQuotesMeasured(
+  /** Spec 031: la simulación siembra cotizaciones por su cuenta, así que fija ella el momento del último recálculo. */
+  private async seedQuotesAndMark(
     adminId: string,
     activePlayers: Player[],
     refPrices: Map<string, number>,
     tDate: (daysAgo: number) => Date,
   ): Promise<{ quotesCount: number; quotesSummary: SimulatedQuote[] }> {
-    const startedAtMs = this.clock.now().getTime();
-    let outcome: 'success' | 'failure' = 'failure';
-    try {
-      const result = await this.seedQuotes(adminId, activePlayers, refPrices, tDate);
-      outcome = 'success';
-      safely(() => this.metrics?.setQuoteLastRecalculation(this.clock.now()));
-      return result;
-    } finally {
-      safely(() => {
-        const durationSeconds = Math.max(0, (this.clock.now().getTime() - startedAtMs) / 1000);
-        this.metrics?.recordQuoteRecalculation('manual', outcome, durationSeconds);
-      });
-    }
+    const result = await this.seedQuotes(adminId, activePlayers, refPrices, tDate);
+    safely(() => this.metrics?.setQuoteLastRecalculation(this.clock.now()));
+    return result;
   }
 
   private async seedQuotes(
