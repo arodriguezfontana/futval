@@ -8,6 +8,8 @@ export class RedisCacheService implements OnModuleDestroy {
   private readonly client: RedisClient | null = null;
   private isConnected = false;
 
+  private destroyed = false;
+
   constructor(
     private readonly configService: ConfigService,
     @Optional() injectedClient?: RedisClient,
@@ -30,7 +32,7 @@ export class RedisCacheService implements OnModuleDestroy {
           enableOfflineQueue: false,
           // Reintenta siempre (espera creciente, tope 5 s) para reconectar solo cuando Redis vuelve. Mientras tanto no se
           // encolan comandos (`enableOfflineQueue: false`): cada operación falla enseguida y se atiende sin caché.
-          retryStrategy: (times) => Math.min(times * 200, 5000),
+          retryStrategy: (times) => (this.destroyed ? null : Math.min(times * 200, 5000)),
         });
 
         this.client.on('connect', () => {
@@ -59,13 +61,16 @@ export class RedisCacheService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.client) {
-      try {
-        await this.client.quit();
-      } catch {
-        this.client.disconnect();
-      }
+    this.destroyed = true;
+    if (!this.client) return;
+    try {
+      // `quit` sólo tiene sentido con la conexión abierta (despide ordenadamente).
+      if (this.client.status === 'ready') await this.client.quit();
+    } catch {
+      // Se corta igual abajo.
     }
+    // Siempre: cancela el reintento pendiente. Si no, el proceso (y Jest en CI, sin Redis) no termina nunca.
+    this.client.disconnect();
   }
 
   /**

@@ -74,6 +74,8 @@ describe('RedisCacheService', () => {
       const result = await serviceWithoutClient.get('any-key');
 
       expect(result).toBeNull();
+      // Sin cliente inyectado el servicio crea uno real, que reintenta para siempre: hay que cerrarlo.
+      await serviceWithoutClient.onModuleDestroy();
     });
   });
 
