@@ -132,9 +132,6 @@ export class SuperuserSeedService {
   }
 
   private async provisionPlayer(userId: string, playerId: string): Promise<boolean> {
-    const existing = await this.holdings.findByUserAndPlayer(userId, playerId);
-    if (existing && existing.quantity > 0) return false;
-
     // El precio se resuelve ANTES de abrir la transaccion: valuar no escribe y no debe retenerla.
     const price = await this.resolvePrice(userId, playerId);
     const createdAt = this.clock.now();
@@ -169,15 +166,17 @@ export class SuperuserSeedService {
     const catalogPlayers = await this.players.findAllActive();
     if (catalogPlayers.length === 0) return;
 
-    // Si ya tiene holding para el primer jugador, asumimos que la liquidez ya fue provisionada.
-    const firstHolding = await this.holdings.findByUserAndPlayer(userId, catalogPlayers[0].id);
-    if (firstHolding && firstHolding.quantity > 0) {
+    // Se decide jugador por jugador: el catálogo puede crecer después de la primera corrida. Una tenencia existente
+    // (aunque esté en 0 porque ya vendió todo) indica que la emisión de ese jugador ya se hizo y no se repite.
+    const emitted = new Set((await this.holdings.findByUserId(userId)).map((holding) => holding.playerId));
+    const pending = catalogPlayers.filter((player) => !emitted.has(player.id));
+    if (pending.length === 0) {
       this.logger.log('Liquidez inicial ya provisionada: sin cambios.');
       return;
     }
 
     const results = await Promise.all(
-      catalogPlayers.map(async (player) => {
+      pending.map(async (player) => {
         try {
           return await this.provisionPlayer(userId, player.id);
         } catch (err) {
