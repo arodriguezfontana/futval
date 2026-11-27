@@ -1,5 +1,9 @@
 # Feature Specification: Métricas de negocio en /metrics
 
+> **Cambio posterior (2026-11-25):** se quitaron las métricas sin panel en Grafana: `market_order_rejections_total`,
+> `sync_runs_total`, `sync_run_duration_seconds`, `quote_recalculations_total` y `quote_recalculation_duration_seconds`.
+> Donde este documento las menciona, ya no aplica. Se mantienen la última sync exitosa y el momento del último recálculo.
+
 **Feature Branch**: `031-business-metrics`
 
 **Created**: 2026-11-13

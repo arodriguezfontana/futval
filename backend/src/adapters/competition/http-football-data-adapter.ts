@@ -5,8 +5,13 @@ import {
   FootballDataMatchDTO,
   FootballDataStandingRowDTO,
 } from './football-data-adapter';
+import { RedisCacheService } from '../../shared/cache/redis-cache.service';
 
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
+const DEFAULT_EXTERNAL_CACHE_TTL_SECONDS = 604800; // 7 días
+
+/** Se lee en cada uso: `.env` lo carga ConfigModule después de importar este archivo. */
+const externalCacheTtl = (): number => Number(process.env.REDIS_EXTERNAL_CACHE_TTL) || DEFAULT_EXTERNAL_CACHE_TTL_SECONDS;
 
 interface FootballDataStandingsTeam {
   id: number;
@@ -68,21 +73,15 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
   private readonly logger = new Logger(HttpFootballDataAdapter.name);
   private readonly httpClient: AxiosInstance;
 
-  /**
-   * `httpClient` es un seam de test (se pasa un mock en el spec), nunca un
-   * provider de Nest: `AxiosInstance` es una interfaz, así que en runtime
-   * `design:paramtypes` la ve como `Function` y, sin `@Optional()`, Nest
-   * intenta resolverla como token e intenta inyectarla al construir este
-   * adapter vía DI en el módulo real, rompiendo el bootstrap de la app
-   * (reproducido en los e2e: `Nest can't resolve dependencies of the
-   * HttpFootballDataAdapter`). `@Optional()` hace que Nest inyecte
-   * `undefined` en ese caso, y el operador `||` de abajo arma el cliente axios real.
-   */
-  constructor(@Optional() httpClient?: AxiosInstance) {
+  constructor(
+    @Optional() httpClient?: AxiosInstance,
+    @Optional() private readonly cache?: RedisCacheService,
+  ) {
     this.httpClient =
       httpClient ||
       axios.create({
         baseURL: FOOTBALL_DATA_BASE_URL,
+        timeout: 5000,
       });
   }
 
@@ -97,6 +96,8 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
   }
 
   async fetchStandings(competitionCode: string): Promise<FootballDataStandingRowDTO[]> {
+    const cacheKey = `futval:external:standings:${competitionCode}`;
+
     try {
       const response = await this.httpClient.get<FootballDataStandingsResponse>(
         `/competitions/${competitionCode}/standings`,
@@ -117,7 +118,7 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
         return [];
       }
 
-      return totalStanding.table.map((row): FootballDataStandingRowDTO => ({
+      const rows: FootballDataStandingRowDTO[] = totalStanding.table.map((row) => ({
         position: row.position,
         teamId: row.team.id,
         teamName: row.team.name,
@@ -132,15 +133,34 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
         goalsAgainst: row.goalsAgainst,
         goalDifference: row.goalDifference,
       }));
+
+      if (rows.length > 0 && this.cache) {
+        await this.cache.set(cacheKey, rows, externalCacheTtl());
+      }
+
+      return rows;
     } catch (error) {
-      this.logger.error(
-        `Failed to fetch standings for competition ${competitionCode}: ${error instanceof Error ? error.message : String(error)}`,
+      this.logger.warn(
+        `Fallo al consultar standings para ${competitionCode} en Football-Data (${error instanceof Error ? error.message : String(error)}). Activando fallback explícito.`,
       );
+
+      if (this.cache) {
+        const cached = await this.cache.get<FootballDataStandingRowDTO[]>(cacheKey);
+        if (cached && cached.length > 0) {
+          this.logger.log(`Fallback exitoso desde caché Redis para standings de ${competitionCode}`);
+          return cached;
+        }
+      }
+
+      // Sin nada que servir: se propaga el error para que quien sincroniza cuente la unidad como fallida y deje intactos los
+      // datos que ya tiene (un `[]` sería indistinguible de una liga sin datos).
       throw error;
     }
   }
 
   async fetchMatches(competitionCode: string): Promise<FootballDataMatchDTO[]> {
+    const cacheKey = `futval:external:matches:${competitionCode}`;
+
     try {
       const response = await this.httpClient.get<FootballDataMatchesResponse>(
         `/competitions/${competitionCode}/matches`,
@@ -152,7 +172,7 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
         return [];
       }
 
-      return matchesData.matches.map((m): FootballDataMatchDTO => ({
+      const rows: FootballDataMatchDTO[] = matchesData.matches.map((m) => ({
         id: m.id,
         utcDate: m.utcDate,
         status: m.status,
@@ -166,10 +186,26 @@ export class HttpFootballDataAdapter implements FootballDataAdapter {
         homeScore: m.score?.fullTime?.home ?? null,
         awayScore: m.score?.fullTime?.away ?? null,
       }));
+
+      if (rows.length > 0 && this.cache) {
+        await this.cache.set(cacheKey, rows, externalCacheTtl());
+      }
+
+      return rows;
     } catch (error) {
-      this.logger.error(
-        `Failed to fetch matches for competition ${competitionCode}: ${error instanceof Error ? error.message : String(error)}`,
+      this.logger.warn(
+        `Fallo al consultar matches para ${competitionCode} en Football-Data (${error instanceof Error ? error.message : String(error)}). Activando fallback explícito.`,
       );
+
+      if (this.cache) {
+        const cached = await this.cache.get<FootballDataMatchDTO[]>(cacheKey);
+        if (cached && cached.length > 0) {
+          this.logger.log(`Fallback exitoso desde caché Redis para matches de ${competitionCode}`);
+          return cached;
+        }
+      }
+
+      // Sin nada que servir: se propaga el error (ver fetchStandings).
       throw error;
     }
   }

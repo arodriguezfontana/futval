@@ -7,10 +7,7 @@ export function createBusinessMetricsDouble(): BusinessMetricsDouble {
   return {
     recordOperation: jest.fn(),
     recordTokensTraded: jest.fn(),
-    recordOrderRejection: jest.fn(),
-    recordSyncRun: jest.fn(),
     setSyncLastSuccess: jest.fn(),
-    recordQuoteRecalculation: jest.fn(),
     setQuoteLastRecalculation: jest.fn(),
     recordAlertTriggered: jest.fn(),
     recordNotificationCreated: jest.fn(),

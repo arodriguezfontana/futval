@@ -21,10 +21,9 @@ import {
 } from '../../domain/sync/sync-run';
 import { SyncInProgressError } from '../../domain/sync/errors/sync-in-progress.error';
 import { RunLock } from '../../shared/concurrency/run-lock';
-import { BusinessMetrics, classifySyncRun } from '../../shared/observability/metrics/business-metrics';
-import { BUSINESS_METRICS } from '../../modules/observability/metrics.constants';
 import { safelyAsync } from '../../shared/observability/metrics/safely';
 import { SyncLastSuccessService } from '../sync/sync-last-success.service';
+import { RedisCacheService } from '../../shared/cache/redis-cache.service';
 
 const MAX_RETAINED_RUNS = 20;
 const FATAL_ERROR_MESSAGE = 'La sincronización se interrumpió por un error inesperado.';
@@ -48,8 +47,8 @@ export class PlayerSyncService {
     private readonly players: PlayerRepository,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
-    @Optional() @Inject(BUSINESS_METRICS) private readonly metrics?: BusinessMetrics,
     @Optional() private readonly lastSuccess?: SyncLastSuccessService,
+    @Optional() private readonly cache?: RedisCacheService,
   ) {}
 
   /**
@@ -115,10 +114,10 @@ export class PlayerSyncService {
       playersSynced: 0,
       failedUnits: [],
     };
-    const startedAtMs = this.clock.now().getTime();
     let aborted = false;
     try {
       await this.executeSync(summary);
+      await this.invalidatePlayerCaches();
       this.runs.set(runId, {
         runId,
         status: 'completed',
@@ -133,6 +132,8 @@ export class PlayerSyncService {
         `Corrida ${runId} abortada por error inesperado.`,
         error instanceof Error ? error.stack : String(error),
       );
+      // Una corrida abortada puede haber guardado algunos equipos antes de fallar.
+      await this.invalidatePlayerCaches();
       this.runs.set(runId, {
         runId,
         status: 'failed',
@@ -144,32 +145,24 @@ export class PlayerSyncService {
       });
     } finally {
       this.runLock.release();
-      await this.recordRunMetrics(trigger, summary, aborted, startedAtMs);
+      if (!aborted && summary.failedUnits.length === 0) await this.recordLastSuccess();
     }
   }
 
   /**
-   * Spec 031: cuenta la corrida (fuente, origen y resultado) y mide su duración; sólo una corrida `success`
-   * (todas las unidades bien) avanza la última sincronización exitosa. Nunca lanza: medir no altera la corrida.
+   * La sync cambia, da de alta y da de baja jugadores: se descartan catálogo, detalle y también los rankings de todos los
+   * usuarios (muestran datos del jugador y excluyen a los dados de baja). `delByPrefix` nunca lanza.
    */
-  private async recordRunMetrics(
-    trigger: 'manual' | 'cron',
-    summary: WhoScoredSyncSummary,
-    aborted: boolean,
-    startedAtMs: number,
-  ): Promise<void> {
+  private async invalidatePlayerCaches(): Promise<void> {
+    for (const prefix of ['futval:catalog:', 'futval:player:', 'futval:ranking:']) {
+      await this.cache?.delByPrefix(prefix);
+    }
+  }
+
+  /** Sólo una corrida con todas las unidades bien llega acá. Nunca lanza (spec 031, FR-013). */
+  private async recordLastSuccess(): Promise<void> {
     await safelyAsync(async () => {
-      const finishedAt = this.clock.now();
-      const outcome = classifySyncRun({
-        aborted,
-        unitsSucceeded: summary.teamsSynced,
-        unitsFailed: summary.failedUnits.length,
-      });
-      const durationSeconds = Math.max(0, (finishedAt.getTime() - startedAtMs) / 1000);
-      this.metrics?.recordSyncRun('whoscored', trigger === 'cron' ? 'scheduled' : 'manual', outcome, durationSeconds);
-      if (outcome === 'success') {
-        await this.lastSuccess?.record('whoscored', finishedAt);
-      }
+      await this.lastSuccess?.record('whoscored', this.clock.now());
     });
   }
 

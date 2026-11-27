@@ -55,9 +55,9 @@ describe('QuotationService — último recálculo de cotizaciones', () => {
   afterEach(() => jest.restoreAllMocks());
 
   describe('tras un recálculo', () => {
-    it('exitoso fija el último recálculo con la hora del Clock (manual y programado)', async () => {
-      await build().recalculateAll('manual');
-      await build().recalculateAll('scheduled');
+    it('exitoso fija el último recálculo con la hora del Clock (en cada corrida)', async () => {
+      await build().recalculateAll();
+      await build().recalculateAll();
 
       expect(metrics.setQuoteLastRecalculation).toHaveBeenCalledTimes(2);
       expect(metrics.setQuoteLastRecalculation).toHaveBeenCalledWith(NOW);
@@ -66,7 +66,7 @@ describe('QuotationService — último recálculo de cotizaciones', () => {
     it('fallido NO lo modifica', async () => {
       strategyRepo.findAllUserIds.mockRejectedValue(new Error('base caída'));
 
-      await expect(build().recalculateAll('manual')).rejects.toThrow('base caída');
+      await expect(build().recalculateAll()).rejects.toThrow('base caída');
 
       expect(metrics.setQuoteLastRecalculation).not.toHaveBeenCalled();
     });
@@ -76,8 +76,8 @@ describe('QuotationService — último recálculo de cotizaciones', () => {
       strategyRepo.findAllUserIds.mockReturnValue(new Promise<string[]>((resolve) => (release = () => resolve([]))));
       const service = build();
 
-      const first = service.recalculateAll('manual');
-      await expect(service.recalculateAll('manual')).rejects.toBeInstanceOf(RecalculationInProgressError);
+      const first = service.recalculateAll();
+      await expect(service.recalculateAll()).rejects.toBeInstanceOf(RecalculationInProgressError);
       expect(metrics.setQuoteLastRecalculation).not.toHaveBeenCalled();
 
       release();
@@ -88,7 +88,7 @@ describe('QuotationService — último recálculo de cotizaciones', () => {
     it('un BusinessMetrics que lanza no altera el resultado del recálculo', async () => {
       makeBusinessMetricsDoubleThrow(metrics);
 
-      await expect(build().recalculateAll('manual')).resolves.toEqual({ recalculated: [], skipped: [] });
+      await expect(build().recalculateAll()).resolves.toEqual({ recalculated: [], skipped: [] });
     });
   });
 

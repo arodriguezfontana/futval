@@ -9,7 +9,7 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
  * independientemente de cambios futuros a la estrategia (spec DD-001).
  */
 @Entity('player_quotes')
-@Index(['userId', 'playerId', 'calculatedAt'])
+@Index('idx_player_quotes_user_player_calc_desc', ['userId', 'playerId', 'calculatedAt'])
 export class PlayerQuoteEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

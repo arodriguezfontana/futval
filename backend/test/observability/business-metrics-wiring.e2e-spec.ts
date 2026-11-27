@@ -6,6 +6,7 @@ import { NotificationsService } from '../../src/services/notifications/notificat
 import { OrdersService } from '../../src/services/orders/orders.service';
 import { PlayerSyncService } from '../../src/services/player-sync/player-sync.service';
 import { QuoteRecalculatedListener } from '../../src/services/alerts/quote-recalculated.listener';
+import { SyncLastSuccessService } from '../../src/services/sync/sync-last-success.service';
 import { QuotationService } from '../../src/services/quotation/quotation.service';
 import { BusinessMetricsService } from '../../src/services/observability/business-metrics.service';
 import { createTestApp, TestContext } from '../test-app';
@@ -32,8 +33,6 @@ describe('Cableado de las métricas de negocio (e2e, spec 031)', () => {
 
   const INSTRUMENTED: Array<[string, Type<unknown>]> = [
     ['OrdersService', OrdersService],
-    ['PlayerSyncService', PlayerSyncService],
-    ['FootballDataSyncService', FootballDataSyncService],
     ['QuotationService', QuotationService],
     ['MarketSimulationService', MarketSimulationService],
     ['NotificationsService', NotificationsService],
@@ -45,5 +44,14 @@ describe('Cableado de las métricas de negocio (e2e, spec 031)', () => {
     const instance = ctx.app.get(type, { strict: false }) as unknown as { metrics?: unknown };
 
     expect(instance.metrics).toBeInstanceOf(BusinessMetricsService);
+  });
+
+  it.each([
+    ['PlayerSyncService', PlayerSyncService],
+    ['FootballDataSyncService', FootballDataSyncService],
+  ] as Array<[string, Type<unknown>]>)('%s tiene inyectado el SyncLastSuccessService', (_name, type) => {
+    const instance = ctx.app.get(type, { strict: false }) as unknown as { lastSuccess?: unknown };
+
+    expect(instance.lastSuccess).toBeInstanceOf(SyncLastSuccessService);
   });
 });

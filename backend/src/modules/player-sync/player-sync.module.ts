@@ -9,7 +9,6 @@ import { HttpWhoScoredAdapter } from '../../adapters/player-sync/http-whoscored-
 import { PlayerSyncService } from '../../services/player-sync/player-sync.service';
 import { PlayerSyncController } from '../../controllers/player-sync/player-sync.controller';
 import { ApiKeyGuard } from '../../guards/api-key/api-key.guard';
-import { MetricsModule } from '../observability/metrics.module';
 import { SyncLastSuccessModule } from '../sync/sync-last-success.module';
 
 /**
@@ -23,7 +22,7 @@ import { SyncLastSuccessModule } from '../sync/sync-last-success.module';
  * protegido con `ApiKeyGuard`.
  */
 @Module({
-  imports: [RuntimeModule, PlayerModule, ApiKeyModule, ScheduleModule.forRoot(), MetricsModule, SyncLastSuccessModule],
+  imports: [RuntimeModule, PlayerModule, ApiKeyModule, ScheduleModule.forRoot(), SyncLastSuccessModule],
   controllers: [PlayerSyncController],
   providers: [
     PlayerSyncService,

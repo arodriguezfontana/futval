@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * fuente (`whoscored`, `football_data`), para que la métrica `sync_last_success_timestamp_seconds` sobreviva
  * al reinicio del backend. Una fila por fuente, sin claves foráneas.
  */
-export class CreateSyncLastSuccess1793200000000 implements MigrationInterface {
-  name = 'CreateSyncLastSuccess1793200000000';
+export class CreateSyncLastSuccess1793200000001 implements MigrationInterface {
+  name = 'CreateSyncLastSuccess1793200000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

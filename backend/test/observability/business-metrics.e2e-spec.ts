@@ -21,11 +21,7 @@ import {
   BUSINESS_METRIC_NAMES,
   NOTIFICATION_DELIVERIES,
   OPERATION_OUTCOMES,
-  RECALCULATION_OUTCOMES,
-  REJECTION_REASONS,
-  RUN_TRIGGERS,
   SIDES,
-  SYNC_OUTCOMES,
   SYNC_SOURCES,
 } from '../../src/shared/observability/metrics/business-metrics';
 import { BUSINESS_METRICS } from '../../src/modules/observability/metrics.constants';
@@ -185,13 +181,12 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
       expect(volumeAfter - volumeBefore).toBeCloseTo(2 * price, 2);
     });
 
-    it('una venta sin tokens sube rechazos con el motivo correcto y no los contadores de éxito', async () => {
+    it('una venta sin tokens cuenta como rechazada y no suma tokens ni volumen', async () => {
       const player = await insertPlayer();
       const seller = await registerAndLogin('vendedor-m2@mail.com', 'vendedorm2');
 
       const successBefore = await valueOf('business_operations_total', { operation: 'TOKENS_SOLD', outcome: 'success' });
       const rejectedBefore = await valueOf('business_operations_total', { operation: 'TOKENS_SOLD', outcome: 'rejected' });
-      const reasonBefore = await valueOf('market_order_rejections_total', { reason: 'insufficient_tokens' });
       const tokensBefore = await valueOf('market_tokens_traded_total', { side: 'sell' });
       const volumeBefore = await valueOf('market_volume_credits_total', { side: 'sell' });
 
@@ -204,25 +199,11 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
       expect(await valueOf('business_operations_total', { operation: 'TOKENS_SOLD', outcome: 'rejected' })).toBe(
         rejectedBefore + 1,
       );
-      expect(await valueOf('market_order_rejections_total', { reason: 'insufficient_tokens' })).toBe(reasonBefore + 1);
       expect(await valueOf('business_operations_total', { operation: 'TOKENS_SOLD', outcome: 'success' })).toBe(
         successBefore,
       );
       expect(await valueOf('market_tokens_traded_total', { side: 'sell' })).toBe(tokensBefore);
       expect(await valueOf('market_volume_credits_total', { side: 'sell' })).toBe(volumeBefore);
-    });
-
-    it('un jugador inexistente cuenta como rechazo con motivo other', async () => {
-      const buyer = await registerAndLogin('comprador-m3@mail.com', 'compradorm3');
-      const otherBefore = await valueOf('market_order_rejections_total', { reason: 'other' });
-
-      const res = await request(server())
-        .post('/orders')
-        .set('Authorization', `Bearer ${buyer.token}`)
-        .send({ side: 'BUY', playerId: randomUUID(), quantity: 1 });
-      expect(res.status).toBe(404);
-
-      expect(await valueOf('market_order_rejections_total', { reason: 'other' })).toBe(otherBefore + 1);
     });
 
     it('una validación de DTO fallida no cuenta como operación', async () => {
@@ -246,9 +227,7 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
       const { samples } = await scrape();
       const allowed: Record<string, readonly string[]> = {
         side: SIDES,
-        reason: REJECTION_REASONS,
         source: SYNC_SOURCES,
-        trigger: RUN_TRIGGERS,
         delivery: NOTIFICATION_DELIVERIES,
       };
       const businessNames: string[] = Object.values(BUSINESS_METRIC_NAMES);
@@ -260,12 +239,7 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
           if (label === 'operation') {
             expect(value).toMatch(/^[A-Z_]+$/);
           } else if (label === 'outcome') {
-            const set = sample.name.startsWith('business_operations')
-              ? OPERATION_OUTCOMES
-              : sample.name.startsWith('sync_')
-                ? SYNC_OUTCOMES
-                : RECALCULATION_OUTCOMES;
-            expect(set as readonly string[]).toContain(value);
+            expect(OPERATION_OUTCOMES as readonly string[]).toContain(value);
           } else {
             expect(allowed[label]).toBeDefined();
             expect(allowed[label]).toContain(value);
@@ -280,7 +254,6 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
         expect(text).toContain(`# TYPE ${name} `);
       }
       expect(text).toMatch(/# HELP business_operations_total .*corrida aceptada, no corrida terminada/);
-      expect(text).toMatch(/# HELP market_order_rejections_total .*sólo el alta de órdenes/);
     });
 
     it('si medir falla, la operación medida responde igual', async () => {
@@ -290,10 +263,8 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
       const broken = {
         recordOperation: boom,
         recordTokensTraded: boom,
-        recordOrderRejection: boom,
-        recordSyncRun: boom,
         setSyncLastSuccess: boom,
-        recordQuoteRecalculation: boom,
+        setQuoteLastRecalculation: boom,
         recordAlertTriggered: boom,
         recordNotificationCreated: boom,
         sseConnectionOpened: boom,
@@ -329,8 +300,6 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
   };
 
   describe('US2 — sincronización de datos', () => {
-    const syncRun = (source: string, trigger: string, outcome: string) =>
-      valueOf('sync_runs_total', { source, trigger, outcome });
     const lastSuccess = (source: string) =>
       valueOf('sync_last_success_timestamp_seconds', { source }).then((v) => (v === 0 ? undefined : v));
 
@@ -340,59 +309,32 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
       whoScored.failingTeams = [];
     });
 
-    it('Football-Data success: cuenta manual/success, observa la duración y crea el gauge de última sync', async () => {
+    it('Football-Data success crea el gauge de última sync y lo persiste', async () => {
       const apiKey = await adminApiKey('sync-fd1@mail.com', 'syncfd1');
-      const before = await syncRun('football_data', 'manual', 'success');
-      const durationBefore = await valueOf('sync_run_duration_seconds_count', { source: 'football_data', trigger: 'manual' });
       const startedAt = Date.now() / 1000;
 
       const res = await request(server()).post('/sync/football-data').set('x-api-key', apiKey);
       expect(res.status).toBe(200);
 
-      expect(await syncRun('football_data', 'manual', 'success')).toBe(before + 1);
-      expect(await valueOf('sync_run_duration_seconds_count', { source: 'football_data', trigger: 'manual' })).toBe(
-        durationBefore + 1,
-      );
       expect(await lastSuccess('football_data')).toBeGreaterThanOrEqual(Math.floor(startedAt));
       const rows = await ctx.dataSource.query('SELECT source FROM "sync_last_success" WHERE source = $1', ['football_data']);
       expect(rows).toHaveLength(1);
     });
 
-    it('Football-Data partial: sube sólo partial y NO mueve el gauge de última sync', async () => {
-      const apiKey = await adminApiKey('sync-fd2@mail.com', 'syncfd2');
+    it.each<[string, string, string[] | 'ALL']>([
+      ['parcial (falla una liga)', 'parcial', ['PD']],
+      ['fallida (fallan todas)', 'total', 'ALL'],
+    ])('Football-Data %s NO mueve el gauge de última sync', async (_name, slug, failing) => {
+      const apiKey = await adminApiKey(`sync-${slug}@mail.com`, `sync${slug}`);
       await request(server()).post('/sync/football-data').set('x-api-key', apiKey); // asegura un success previo
       const gaugeBefore = await lastSuccess('football_data');
       expect(gaugeBefore).toBeDefined();
-      const partial = await syncRun('football_data', 'manual', 'partial');
-      const success = await syncRun('football_data', 'manual', 'success');
-      const failure = await syncRun('football_data', 'manual', 'failure');
-      const durationBefore = await valueOf('sync_run_duration_seconds_count', { source: 'football_data', trigger: 'manual' });
-      footballData.failingLeagues = ['PD'];
+      footballData.failingLeagues = failing;
       await new Promise((resolve) => setTimeout(resolve, 1100)); // distingue el segundo si el gauge se moviera
 
       const res = await request(server()).post('/sync/football-data').set('x-api-key', apiKey);
       expect(res.status).toBe(200);
 
-      expect(await syncRun('football_data', 'manual', 'partial')).toBe(partial + 1);
-      expect(await syncRun('football_data', 'manual', 'success')).toBe(success);
-      expect(await syncRun('football_data', 'manual', 'failure')).toBe(failure);
-      expect(await valueOf('sync_run_duration_seconds_count', { source: 'football_data', trigger: 'manual' })).toBe(
-        durationBefore + 1,
-      );
-      expect(await lastSuccess('football_data')).toBe(gaugeBefore);
-    });
-
-    it('Football-Data failure (todas las ligas fallan): sube failure y NO mueve el gauge', async () => {
-      const apiKey = await adminApiKey('sync-fd3@mail.com', 'syncfd3');
-      await request(server()).post('/sync/football-data').set('x-api-key', apiKey);
-      const gaugeBefore = await lastSuccess('football_data');
-      const failure = await syncRun('football_data', 'manual', 'failure');
-      footballData.failingLeagues = 'ALL';
-      await new Promise((resolve) => setTimeout(resolve, 1100));
-
-      await request(server()).post('/sync/football-data').set('x-api-key', apiKey);
-
-      expect(await syncRun('football_data', 'manual', 'failure')).toBe(failure + 1);
       expect(await lastSuccess('football_data')).toBe(gaugeBefore);
     });
 
@@ -409,16 +351,14 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
       throw new Error('La corrida de WhoScored no terminó');
     };
 
-    it('WhoScored: success, partial y failure por origen manual; sólo success mueve el gauge', async () => {
+    it('WhoScored: sólo una corrida completa mueve el gauge', async () => {
       const apiKey = await adminApiKey('sync-ws1@mail.com', 'syncws1');
       const acceptedBefore = await valueOf('business_operations_total', {
         operation: 'PLAYER_SYNC_TRIGGERED',
         outcome: 'success',
       });
 
-      const successBefore = await syncRun('whoscored', 'manual', 'success');
       await runWhoScored(apiKey);
-      expect(await syncRun('whoscored', 'manual', 'success')).toBe(successBefore + 1);
       const gaugeAfterSuccess = await lastSuccess('whoscored');
       expect(gaugeAfterSuccess).toBeDefined();
       // "success" de la operación = corrida aceptada (202), distinto del resultado de la corrida.
@@ -431,32 +371,26 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
         { externalTeamId: 't2', team: 'Equipo Dos' },
       ];
       whoScored.failingTeams = ['t2'];
-      const partialBefore = await syncRun('whoscored', 'manual', 'partial');
       await new Promise((resolve) => setTimeout(resolve, 1100));
       await runWhoScored(apiKey);
-      expect(await syncRun('whoscored', 'manual', 'partial')).toBe(partialBefore + 1);
       expect(await lastSuccess('whoscored')).toBe(gaugeAfterSuccess);
 
       whoScored.failingTeams = ['t1', 't2'];
-      const failureBefore = await syncRun('whoscored', 'manual', 'failure');
       await runWhoScored(apiKey);
-      expect(await syncRun('whoscored', 'manual', 'failure')).toBe(failureBefore + 1);
       expect(await lastSuccess('whoscored')).toBe(gaugeAfterSuccess);
     });
 
-    it('al reiniciar el backend sobre la misma base, la última sync exitosa se conserva y los contadores vuelven a 0', async () => {
+    it('al reiniciar el backend sobre la misma base, la última sync exitosa se conserva', async () => {
       const apiKey = await adminApiKey('sync-restart@mail.com', 'syncrestart');
       await request(server()).post('/sync/football-data').set('x-api-key', apiKey);
       const gauge = await lastSuccess('football_data');
       expect(gauge).toBeDefined();
-      expect(await syncRun('football_data', 'manual', 'success')).toBeGreaterThan(0);
 
       const restarted = await createTestApp();
       try {
         const res = await request(restarted.app.getHttpServer()).get('/metrics');
         const samples = parsePrometheusText(res.text);
         expect(sampleValue(samples, 'sync_last_success_timestamp_seconds', { source: 'football_data' })).toBe(gauge);
-        expect(sampleValue(samples, 'sync_runs_total', { source: 'football_data', trigger: 'manual', outcome: 'success' })).toBe(0);
       } finally {
         await restarted.close();
       }
@@ -464,37 +398,29 @@ describe('Métricas de negocio en GET /metrics (e2e)', () => {
   });
 
   describe('US3 — recálculos de cotización', () => {
-    const recalcs = (trigger: string, outcome: string) =>
-      valueOf('quote_recalculations_total', { trigger, outcome });
+    const lastRecalculation = () => valueOf('quote_last_recalculation_timestamp_seconds');
 
-    it('POST /quotes/recalculate cuenta manual/success y observa la duración', async () => {
+    it('POST /quotes/recalculate fija el momento del último recálculo', async () => {
       const apiKey = await adminApiKey('quote-m1@mail.com', 'quotem1');
-      const before = await recalcs('manual', 'success');
-      const durationBefore = await valueOf('quote_recalculation_duration_seconds_count', { trigger: 'manual' });
+      const startedAt = Date.now() / 1000;
 
       const res = await request(server()).post('/quotes/recalculate').set('x-api-key', apiKey);
       expect(res.status).toBe(200);
 
-      expect(await recalcs('manual', 'success')).toBe(before + 1);
-      expect(await valueOf('quote_recalculation_duration_seconds_count', { trigger: 'manual' })).toBe(durationBefore + 1);
-      expect(await recalcs('scheduled', 'success')).toBe(0);
+      expect(await lastRecalculation()).toBeGreaterThanOrEqual(Math.floor(startedAt));
     });
 
-    it('POST /admin/simulate-market incrementa quote_recalculations_total{trigger="manual"} exactamente en 1 (sin doble conteo)', async () => {
+    it('POST /admin/simulate-market también lo fija', async () => {
       // La simulación opera siempre sobre la cuenta ADMIN_EMAIL y necesita un catálogo con varios jugadores.
       for (let i = 0; i < 8; i++) await insertPlayer();
       const apiKey = await adminApiKey(process.env.ADMIN_EMAIL ?? 'admin@desapp.com', 'quotesim');
-      const manualBefore =
-        (await recalcs('manual', 'success')) + (await recalcs('manual', 'failure'));
-      const successBefore = await recalcs('manual', 'success');
+      const startedAt = Date.now() / 1000;
 
       const res = await request(server()).post('/admin/simulate-market').set('x-api-key', apiKey);
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
 
-      const manualAfter = (await recalcs('manual', 'success')) + (await recalcs('manual', 'failure'));
-      expect(manualAfter).toBe(manualBefore + 1);
-      expect(await recalcs('manual', 'success')).toBe(successBefore + 1);
+      expect(await lastRecalculation()).toBeGreaterThanOrEqual(Math.floor(startedAt));
     });
   });
 

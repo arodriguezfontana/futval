@@ -2,12 +2,7 @@ import {
   BUSINESS_OPERATIONS,
   NOTIFICATION_DELIVERIES,
   OPERATION_OUTCOMES,
-  RECALCULATION_OUTCOMES,
-  REJECTION_REASONS,
-  RUN_TRIGGERS,
   SIDES,
-  SYNC_OUTCOMES,
-  SYNC_SOURCES,
 } from '../../shared/observability/metrics/business-metrics';
 import { BusinessMetricsService } from './business-metrics.service';
 import { MetricsService } from './metrics.service';
@@ -35,31 +30,10 @@ describe('BusinessMetricsService — series inicializadas en 0', () => {
     }
   });
 
-  it('tokens y créditos por lado, y rechazos por motivo, en 0', () => {
+  it('tokens y créditos por lado, en 0', () => {
     for (const side of SIDES) {
       expect(text).toContain(`market_tokens_traded_total{side="${side}"} 0`);
       expect(text).toContain(`market_volume_credits_total{side="${side}"} 0`);
-    }
-    for (const reason of REJECTION_REASONS) expect(text).toContain(`market_order_rejections_total{reason="${reason}"} 0`);
-  });
-
-  it('corridas de sync por fuente, origen y resultado, y su histograma, en 0', () => {
-    for (const source of SYNC_SOURCES) {
-      for (const trigger of RUN_TRIGGERS) {
-        expect(text).toContain(`sync_run_duration_seconds_count{source="${source}",trigger="${trigger}"} 0`);
-        for (const outcome of SYNC_OUTCOMES) {
-          expect(text).toContain(`sync_runs_total{source="${source}",trigger="${trigger}",outcome="${outcome}"} 0`);
-        }
-      }
-    }
-  });
-
-  it('recálculos por origen y resultado, y su histograma, en 0', () => {
-    for (const trigger of RUN_TRIGGERS) {
-      expect(text).toContain(`quote_recalculation_duration_seconds_count{trigger="${trigger}"} 0`);
-      for (const outcome of RECALCULATION_OUTCOMES) {
-        expect(text).toContain(`quote_recalculations_total{trigger="${trigger}",outcome="${outcome}"} 0`);
-      }
     }
   });
 

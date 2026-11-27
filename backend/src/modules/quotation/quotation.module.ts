@@ -16,6 +16,7 @@ import { PlayerQuoteRepository } from '../../repositories/quotation/player-quote
 import { QuotationService } from '../../services/quotation/quotation.service';
 import { StrategyService } from '../../services/quotation/strategy.service';
 import { StrategyProvisioningService } from '../../services/quotation/strategy-provisioning.service';
+import { QuotationCacheInvalidationListener } from '../../services/quotation/listeners/quotation-cache-invalidation.listener';
 
 /**
  * Estrategias de valuación propias por usuario y recálculo de cotizaciones
@@ -38,6 +39,7 @@ import { StrategyProvisioningService } from '../../services/quotation/strategy-p
     QuotationService,
     StrategyService,
     StrategyProvisioningService,
+    QuotationCacheInvalidationListener,
     ValuationStrategyMapper,
     PlayerQuoteMapper,
     ValuationStrategyRepository,
