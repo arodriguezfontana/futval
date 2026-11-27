@@ -60,9 +60,7 @@ Con el backend corriendo:
 - Swagger UI → http://localhost:3000/docs
 - Spec OpenAPI v3 (JSON) → http://localhost:3000/docs-json
 
-## Observabilidad (equivalente a Spring Boot Actuator)
-
-El backend es NestJS, así que no usa Actuator. Estos endpoints públicos cubren lo mismo, sin token:
+## Observabilidad 
 
 | Actuator | Acá | Qué devuelve |
 |---|---|---|
@@ -73,7 +71,7 @@ El backend es NestJS, así que no usa Actuator. Estos endpoints públicos cubren
 `GET /info` toma el commit de la variable `GIT_COMMIT`, que tiene que definir el despliegue (por ejemplo
 `GIT_COMMIT=$(git rev-parse --short HEAD)`); si no está definida, el commit sale como `null`.
 
-## Ver las métricas
+## Métricas
 
 1. Con el backend corriendo (`cd backend && pnpm dev`), las métricas están en [http://localhost:3000/metrics](http://localhost:3000/metrics).
 2. Para verlas en Prometheus y Grafana, levantar los servicios (desde `backend/`):
@@ -84,30 +82,6 @@ El backend es NestJS, así que no usa Actuator. Estos endpoints públicos cubren
 
 3. Prometheus: http://localhost:9090 (en [`/targets`](http://localhost:9090/targets), `futval-backend` debe estar en **UP**).
 4. Grafana: http://localhost:3001 (usuario `admin`, contraseña `admin`). El dashboard [**FútVal — métricas del backend**](http://localhost:3001/d/futval-http-metrics) ya viene cargado.
-   Trae paneles de latencia p95, tasa de error 5xx (la del SLA) y tasa de 4xx, y una sección del proceso Node. La tasa de 4xx es informativa: los 4xx no entran en la tasa de error del SLA.
-   Arriba de todo tiene la sección **Negocio** con las métricas de negocio (ver abajo): tarjetas de resumen del período, el mercado, las alertas y notificaciones, y una fila de actividad y salud (antigüedad de la última sync exitosa de cada fuente y del último recálculo, usuarios nuevos y logins rechazados). Todo se mide dentro del rango del dashboard, que abre en las últimas 2 horas. El porcentaje de rechazos no incluye login, registro ni API keys.
-   Hay un segundo dashboard, [**FútVal — errores**](http://localhost:3001/d/futval-errors), con el detalle de los errores: totales de 4xx y 5xx, desglose por código de estado, endpoints con más errores y una tabla por método, ruta y código.
-
-### Métricas de negocio
-
-Además de cómo responde la API, `GET /metrics` expone cómo se usa y cómo funciona el producto (sin endpoints ni SLA nuevos). Las etiquetas toman valores de conjuntos cerrados y nunca identifican a un usuario, un jugador ni una corrida puntual.
-
-| Métrica | Tipo | Etiquetas | Qué mide |
-|---|---|---|---|
-| `business_operations_total` | counter | `operation`, `outcome` (`success`, `rejected`, `unexpected`) | Operaciones de escritura de la API por tipo y resultado. `success` es "operación aceptada": para `PLAYER_SYNC_TRIGGERED` es *corrida aceptada*, no *corrida terminada* (su resultado se consulta en `GET /sync/whoscored/{runId}`). |
-| `market_tokens_traded_total` | counter | `side` (`buy`, `sell`) | Tokens operados, sólo de órdenes efectivamente registradas. |
-| `market_volume_credits_total` | counter | `side` | Volumen en créditos (cantidad × precio de cada fill). |
-| `sync_last_success_timestamp_seconds` | gauge | `source` | Momento de la última corrida **`success`** de cada fuente (una `partial` o `failure` no lo mueve). Se guarda en la base y sobrevive al reinicio; sin ninguna corrida exitosa, la serie no existe. |
-| `quote_last_recalculation_timestamp_seconds` | gauge | — | Momento (segundos Unix) del último recálculo exitoso, incluida la simulación de mercado. Se siembra al arrancar desde la última cotización guardada, así que sobrevive al reinicio; vale 0 si todavía no hubo ninguno. |
-| `alerts_triggered_total` | counter | — | Alertas de precio disparadas. |
-| `notifications_created_total` | counter | `delivery` (`live`, `stored_only`) | Notificaciones creadas: `live` llegó al usuario conectado, `stored_only` quedó guardada porque no estaba conectado. |
-| `sse_connections_active` | gauge | — | Conexiones abiertas del stream de notificaciones en tiempo real. |
-
-Todas las series de contadores se crean en 0 al arrancar (así el primer evento ya cuenta en `increase()`), por lo que con el backend recién levantado los paneles de la sección **Negocio** muestran 0 o líneas vacías hasta que haya actividad real (compras, ventas, alertas). La excepción es `sync_last_success_timestamp_seconds`, que no existe hasta la primera sync exitosa (la tarjeta muestra "nunca"). Ampliá el rango de tiempo si hace falta.
-
-**Decisión de diseño:** el negocio se mide por separado de la API (`BusinessMetricsService` junto a `MetricsService`, mismo `GET /metrics`) y sólo se cuenta lo que realmente ocurrió: el éxito de una orden se cuenta después de confirmar la transacción y desde la capa de servicios, así una operación revertida o que no se concretó nunca figura como exitosa. Medir nunca altera el resultado de la operación medida.
-
-**Riesgos aceptados (fuera de alcance):** las métricas viven en memoria y se reinician con el backend (salvo la última sincronización exitosa); con varias instancias cada una expone las suyas; no hay alertas sobre estos valores.
 
 ## Scripts
 
