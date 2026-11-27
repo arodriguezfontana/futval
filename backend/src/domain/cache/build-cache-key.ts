@@ -17,7 +17,7 @@ export function hashParams(params: Record<string, unknown>): string {
       const val = params[k];
       return val !== undefined && val !== null && val !== '';
     })
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
 
   if (sortedKeys.length === 0) {
     return 'default';

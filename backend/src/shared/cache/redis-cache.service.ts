@@ -1,14 +1,15 @@
-import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis, { Redis as RedisClient } from 'ioredis';
 
 @Injectable()
-export class RedisCacheService implements OnModuleDestroy {
+export class RedisCacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisCacheService.name);
   private readonly client: RedisClient | null = null;
   private isConnected = false;
 
   private destroyed = false;
+  private endpoint = '';
 
   constructor(
     private readonly configService: ConfigService,
@@ -21,6 +22,7 @@ export class RedisCacheService implements OnModuleDestroy {
       const host = this.configService.get<string>('REDIS_HOST', 'localhost');
       const port = Number(this.configService.get<number>('REDIS_PORT', 6379));
       const password = this.configService.get<string>('REDIS_PASSWORD');
+      this.endpoint = `${host}:${port}`;
 
       try {
         this.client = new Redis({
@@ -48,16 +50,20 @@ export class RedisCacheService implements OnModuleDestroy {
         this.client.on('close', () => {
           this.isConnected = false;
         });
-
-        // Conectar de forma asíncrona sin bloquear el arranque de NestJS
-        this.client.connect().catch((err) => {
-          this.logger.warn(`No se pudo conectar a Redis al inicio (${host}:${port}): ${err.message}. Operando en modo fail-open.`);
-        });
       } catch (err) {
         this.logger.warn(`Fallo al inicializar cliente Redis: ${err instanceof Error ? err.message : String(err)}. Operando en fail-open.`);
         this.client = null;
       }
     }
+  }
+
+  /** Conecta al iniciar el módulo, sin esperar la conexión para no demorar el arranque. */
+  onModuleInit(): void {
+    // `wait` = cliente creado con `lazyConnect` que todavía no intentó conectarse.
+    if (this.client?.status !== 'wait') return;
+    this.client.connect().catch((err) => {
+      this.logger.warn(`No se pudo conectar a Redis al inicio (${this.endpoint}): ${err.message}. Operando en modo fail-open.`);
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
